@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.7
+// @version      0.1.8
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -209,12 +209,13 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.7";
+  const SCRIPT_VERSION = "0.1.8";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
   const POSITION_STORAGE = "lads_war_companion_position";
   const REQUEST_TIMEOUT_MS = 30_000;
+  const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
   const PANEL_EDGE_GAP = 8;
   const TOPICS = ["war_tracker_settings", "war_tracker", "score", "retaliation"];
 
@@ -239,7 +240,7 @@
     session: null,
     token: "",
     socket: null,
-    socketClosing: false,
+    socketConnectTimer: 0,
     reconnectTimer: 0,
     reconnectAttempt: 0,
     ticker: 0,
@@ -525,7 +526,7 @@
         url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/session`),
         headers: { "Content-Type": "application/json" },
         data: JSON.stringify({ tornApiKey: key }),
-        label: "Warbuddy login",
+        label: "War Companion login",
       });
       if (!response?.session?.wsSessionToken) throw new Error("Backend did not return a companion session");
       state.session = response.session;
@@ -544,13 +545,18 @@
     return state.authPromise;
   }
 
+  function clearSocketConnectTimer() {
+    if (state.socketConnectTimer) clearTimeout(state.socketConnectTimer);
+    state.socketConnectTimer = 0;
+  }
+
   function closeSocket() {
     clearTimeout(state.reconnectTimer);
     state.reconnectTimer = 0;
+    clearSocketConnectTimer();
     const socket = state.socket;
     state.socket = null;
     if (socket && socket.readyState < WebSocket.CLOSING) {
-      state.socketClosing = true;
       socket.close(1000, "Paused");
     }
   }
@@ -628,12 +634,28 @@
       if (!state.token || !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) await authenticate();
       if (!isForeground()) return;
       state.phase = "connecting";
-      state.socketClosing = false;
       scheduleRender();
       const socket = new window.WebSocket(socketUrl());
       state.socket = socket;
+      clearSocketConnectTimer();
+      state.socketConnectTimer = setTimeout(() => {
+        if (socket !== state.socket || socket.readyState !== WebSocket.CONNECTING) return;
+        state.lastSocketClose = {
+          code: 1006,
+          reason: "Handshake timed out",
+          at: new Date().toISOString(),
+        };
+        state.error = "Live connection timed out. Retrying automatically.";
+        state.socket = null;
+        try { socket.close(4000, "Connection timeout"); }
+        catch { /* The browser may already have discarded the pending socket. */ }
+        state.phase = "connecting";
+        scheduleRender();
+        scheduleReconnect();
+      }, SOCKET_CONNECT_TIMEOUT_MS);
       socket.addEventListener("open", () => {
         if (socket !== state.socket) return;
+        clearSocketConnectTimer();
         state.phase = "connected";
         state.reconnectAttempt = 0;
         state.error = "";
@@ -647,14 +669,15 @@
         state.lastSocketErrorAt = new Date().toISOString();
       });
       socket.addEventListener("close", (event) => {
-        if (socket === state.socket) state.socket = null;
+        if (socket !== state.socket) return;
+        clearSocketConnectTimer();
+        state.socket = null;
         state.lastSocketClose = {
           code: Number(event.code || 1006),
           reason: String(event.reason || ""),
           at: new Date().toISOString(),
         };
-        if (state.socketClosing || !isForeground()) {
-          state.socketClosing = false;
+        if (!isForeground()) {
           state.phase = "paused";
           scheduleRender();
           return;
@@ -788,7 +811,7 @@
       : "";
 
     panel.innerHTML = `<div class="wc-header">
-      <div class="wc-title">${escapeHtml(state.session?.playerName || "Warbuddy")} <span class="wc-version">v${SCRIPT_VERSION}</span></div>
+      <div class="wc-title">${escapeHtml(state.session?.playerName || "War Companion")} <span class="wc-version">v${SCRIPT_VERSION}</span></div>
       <button class="wc-button wc-icon" data-action="collapse" title="${state.collapsed ? "Expand" : "Collapse"}">${state.collapsed ? "+" : "-"}</button>
     </div>
     <div class="wc-body">
@@ -917,6 +940,7 @@
       `Page visibility: ${document.visibilityState}`,
       `Browser online: ${typeof navigator === "undefined" || navigator.onLine !== false ? "yes" : "no"}`,
       `WebSocket state: ${state.socket?.readyState ?? "none"}`,
+      `Connect watchdog: ${state.socketConnectTimer ? "armed" : "idle"}`,
       `Last socket error: ${state.lastSocketErrorAt || "none"}`,
       `Last close: ${state.lastSocketClose ? `${state.lastSocketClose.code}${state.lastSocketClose.reason ? ` (${state.lastSocketClose.reason})` : ""} at ${state.lastSocketClose.at}` : "none"}`,
       `Endpoint: ${socketUrl()}`,

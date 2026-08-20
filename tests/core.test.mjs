@@ -193,7 +193,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.7"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.8"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -220,6 +220,23 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes('window.addEventListener("online", syncForegroundState)'));
     assert.ok(source.includes('window.addEventListener("offline", syncForegroundState)'));
     assert.doesNotMatch(source, /state\.error = "Live connection failed"/);
+  });
+
+  it("recovers a socket that never completes its opening handshake", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes("const SOCKET_CONNECT_TIMEOUT_MS = 15_000"));
+    assert.ok(source.includes("socketConnectTimer: 0"));
+    assert.ok(source.includes('reason: "Handshake timed out"'));
+    assert.ok(source.includes('state.error = "Live connection timed out. Retrying automatically."'));
+    assert.ok(source.includes("scheduleReconnect();"));
+  });
+
+  it("ignores delayed close events from sockets that were already replaced", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('socket.addEventListener("close", (event) => {\n        if (socket !== state.socket) return;'));
+    assert.doesNotMatch(source, /socketClosing/);
   });
 });
 
