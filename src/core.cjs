@@ -1,8 +1,8 @@
-(function attachWarCompanionCore(root, factory) {
+(function attachWarbuddyCore(root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  root.AskeladdsWarCompanionCore = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function createWarCompanionCore() {
+  root.WarbuddyCore = api;
+})(typeof globalThis !== "undefined" ? globalThis : this, function createWarbuddyCore() {
   "use strict";
 
   const HOSPITAL_WINDOW_MS = 15 * 60 * 1000;
@@ -64,7 +64,7 @@
     return Number.isSafeInteger(memberId) && memberId > 0 ? memberId : 0;
   };
 
-  const isWarCompanionPageUrl = (value) => {
+  const isWarbuddyPageUrl = (value) => {
     if (isFactionPageUrl(value)) return true;
     let url;
     try {
@@ -119,6 +119,20 @@
       Number(claim?.targetMemberId || 0) === Number(targetMemberId || 0)
       && toTimestampMs(claim?.expiresAt) > nowMs
     ));
+
+  const dibsAttackPresentation = (claim, viewerPlayerId, actionLabel = "Attack") => {
+    const action = String(actionLabel || "Attack").trim() || "Attack";
+    if (!claim) return { state: "free", label: action, title: action };
+    if (String(claim.claimedByPlayerId || "") === String(viewerPlayerId || "")) {
+      return { state: "mine", label: "Your Dibs", title: `Your Dibs - ${action}` };
+    }
+    const owner = String(claim.claimedByPlayerName || claim.claimedByPlayerId || "another member");
+    return {
+      state: "taken",
+      label: "Dibsed",
+      title: `Dibsed by ${owner} - ${action} anyway`,
+    };
+  };
 
   const dibsFeatureEnabled = (settings) => (
     settings?.enabled !== false && settings?.dibsEnabled !== false
@@ -313,13 +327,14 @@
     applyRosterUpdate,
     attackUrl,
     buildActionQueue,
+    dibsAttackPresentation,
     dibsEligibility,
     dibsFeatureEnabled,
     duration,
     formatBsp,
     inferEnemyFactionId,
     isFactionPageUrl,
-    isWarCompanionPageUrl,
+    isWarbuddyPageUrl,
     scoreForFaction,
     toTimestampMs,
   };

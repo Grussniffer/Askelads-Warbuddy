@@ -1,15 +1,20 @@
-(function runWarCompanion() {
+(function runWarbuddy() {
   "use strict";
 
-  const core = globalThis.AskeladdsWarCompanionCore;
+  const core = globalThis.WarbuddyCore;
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.25";
-  const PANEL_ID = "lads-war-companion";
-  const KEY_STORAGE = "lads_war_companion_api_key";
-  const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
-  const POSITION_STORAGE = "lads_war_companion_position";
+  const SCRIPT_VERSION = "0.1.28";
+  const PANEL_ID = "warbuddy-panel";
+  const KEY_STORAGE = "warbuddy_api_key";
+  const COLLAPSED_STORAGE = "warbuddy_collapsed";
+  const POSITION_STORAGE = "warbuddy_position";
+  const LEGACY_STORAGE_KEYS = {
+    [KEY_STORAGE]: "lads_war_companion_api_key",
+    [COLLAPSED_STORAGE]: "lads_war_companion_collapsed",
+    [POSITION_STORAGE]: "lads_war_companion_position",
+  };
   const REQUEST_TIMEOUT_MS = 30_000;
   const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
   const FALLBACK_POLL_MS = 2_000;
@@ -33,6 +38,14 @@
       else window.localStorage?.removeItem(key);
     },
   };
+
+  for (const [key, legacyKey] of Object.entries(LEGACY_STORAGE_KEYS)) {
+    if (storage.get(key, null) !== null) continue;
+    const legacyValue = storage.get(legacyKey, null);
+    if (legacyValue === null) continue;
+    storage.set(key, legacyValue);
+    storage.remove(legacyKey);
+  }
 
   const state = {
     phase: "idle",
@@ -144,7 +157,9 @@
     #${PANEL_ID} .wc-action-section .wc-section-title { border-radius:4px 4px 0 0; }
     #${PANEL_ID} .wc-action-section .wc-item:last-child { border-radius:0 0 4px 4px; }
     #${PANEL_ID} .wc-action-section .wc-dibs-tip { top:calc(100% + 4px); bottom:auto; font-size:11px; line-height:1.3; }
-    #${PANEL_ID} .wc-dibs-wrap:hover .wc-dibs-tip, #${PANEL_ID} .wc-dibs-wrap:focus-within .wc-dibs-tip, #${PANEL_ID} .wc-dibs-wrap.open .wc-dibs-tip { display:block; }
+    #${PANEL_ID} .wc-dibs-wrap.open .wc-dibs-tip { display:block; }
+    #${PANEL_ID} .wc-dibs-close { float:right; width:16px; height:16px; margin:-2px -2px 1px 4px; border:0; border-radius:3px; background:transparent; color:#a1a1aa; padding:0; font:700 14px/16px Arial,Helvetica,sans-serif; cursor:pointer; }
+    #${PANEL_ID} .wc-dibs-close:hover, #${PANEL_ID} .wc-dibs-close:focus-visible { background:#27272a; color:#fff; outline:1px solid #71717a; }
     #${PANEL_ID} .wc-dibs-release { display:block; width:100%; margin-top:4px; border:1px solid #3f3f46; border-radius:3px; background:#27272a; color:#f4f4f5; padding:3px 5px; font:inherit; font-weight:700; cursor:pointer; }
     #${PANEL_ID} .wc-row { display:flex; gap:5px; margin-top:6px; }
     #${PANEL_ID} .wc-input { min-width:0; flex:1; border:1px solid #3f3f46; border-radius:5px; background:#09090b; color:#f4f4f5; padding:6px; }
@@ -152,6 +167,9 @@
     #${PANEL_ID} .wc-button, #${PANEL_ID} .wc-link { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; border:1px solid #3f3f46; border-radius:5px; background:#27272a; color:#f4f4f5; padding:5px 7px; text-decoration:none; font:inherit; font-weight:700; cursor:pointer; }
     #${PANEL_ID} .wc-button:hover, #${PANEL_ID} .wc-link:hover { background:#3f3f46; }
     #${PANEL_ID} .wc-button.primary, #${PANEL_ID} .wc-link.primary { border-color:#065f46; background:#064e3b; color:#d1fae5; }
+    #${PANEL_ID} .wc-link.dibs-mine { border-color:#10b981; background:#047857; color:#ecfdf5; }
+    #${PANEL_ID} .wc-link.dibs-taken { border-color:#a1a1aa; background:#52525b; color:#fafafa; box-shadow:0 0 0 1px rgba(161,161,170,.55); opacity:1; }
+    #${PANEL_ID} .wc-link.dibs-taken:hover { border-color:#d4d4d8; background:#71717a; color:#fff; }
     #${PANEL_ID} .wc-button:disabled { opacity:.45; cursor:default; }
     #${PANEL_ID} .wc-icon { width:22px; height:22px; padding:0; }
     #${PANEL_ID} details { margin-top:6px; border:1px solid #27272a; border-radius:5px; color:#a1a1aa; }
@@ -396,7 +414,7 @@
         url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/session`),
         headers: { "Content-Type": "application/json" },
         data: JSON.stringify({ tornApiKey: key }),
-        label: "War Companion login",
+        label: "Warbuddy login",
       });
       if (!response?.session?.wsSessionToken) throw new Error("Backend did not return a companion session");
       state.session = response.session;
@@ -593,7 +611,7 @@
         method: "GET",
         url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/snapshot?timestamp=${Date.now()}`),
         headers: { Authorization: `Bearer ${state.token}` },
-        label: "War Companion snapshot",
+        label: "Warbuddy snapshot",
       });
       if (generation !== state.fallbackGeneration || !state.fallbackActive || !isForeground()) return;
       applyFallbackSnapshot(snapshot);
@@ -808,11 +826,11 @@
     return { label: "Connecting", tone: "wait" };
   };
 
-  function dibsMarkup(member, view) {
+  function dibsMarkup(member, view, knownClaim) {
     if (!core.dibsFeatureEnabled(state.settings)) return "";
     const memberId = Number(member?.member_id || 0);
     if (!Number.isSafeInteger(memberId) || memberId <= 0) return "";
-    const claim = core.activeDibsClaim(view.dibs, memberId, state.nowMs);
+    const claim = knownClaim || core.activeDibsClaim(view.dibs, memberId, state.nowMs);
     const eligibility = core.dibsEligibility(member, state.nowMs);
     if (!claim && !eligibility.eligible) return "";
     const isMine = !!claim && String(claim.claimedByPlayerId || "") === String(state.session?.playerId || "");
@@ -829,23 +847,42 @@
     const release = isMine
       ? `<button type="button" class="wc-dibs-release" data-dibs-action="release" data-dibs-target="${memberId}">Release</button>`
       : "";
-    return `<span class="wc-dibs-wrap${open}"><button type="button" class="wc-dibs ${tone}" data-dibs-action="${action}" data-dibs-target="${memberId}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${busy ? " disabled" : ""}>&#9995;</button><span class="wc-dibs-tip">${escapeHtml(label)}${release}</span></span>`;
+    return `<span class="wc-dibs-wrap${open}"><button type="button" class="wc-dibs ${tone}" data-dibs-action="${action}" data-dibs-target="${memberId}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${busy ? " disabled" : ""}>&#9995;</button><span class="wc-dibs-tip"><button type="button" class="wc-dibs-close" data-dibs-action="close" data-dibs-target="${memberId}" aria-label="Close Dibs details" title="Close">&times;</button>${escapeHtml(label)}${release}</span></span>`;
+  }
+
+  function attackLinkMarkup(url, targetMemberId, actionLabel, view, emphasized = false, knownClaim) {
+    const claim = knownClaim || (core.dibsFeatureEnabled(state.settings)
+      ? core.activeDibsClaim(view.dibs, targetMemberId, state.nowMs)
+      : undefined);
+    const presentation = core.dibsAttackPresentation(
+      claim,
+      state.session?.playerId,
+      actionLabel || "Attack"
+    );
+    const toneClass = presentation.state === "mine"
+      ? "dibs-mine"
+      : presentation.state === "taken" ? "dibs-taken" : emphasized ? "primary" : "";
+    return `<a class="wc-link ${toneClass}" data-dibs-state="${presentation.state}" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(presentation.title)}" title="${escapeHtml(presentation.title)}">${escapeHtml(presentation.label)}</a>`;
   }
 
   function actionMarkup(item, view) {
     const member = view.enemyRoster.find((candidate) => Number(candidate?.member_id || 0) === Number(item.memberId || 0));
+    const memberId = Number(member?.member_id || item.memberId || 0);
+    const claim = core.dibsFeatureEnabled(state.settings)
+      ? core.activeDibsClaim(view.dibs, memberId, state.nowMs)
+      : undefined;
     return `<div class="wc-item ${escapeHtml(item.severity)}">
       <div class="wc-item-text"><div class="wc-item-title">${escapeHtml(item.title)}</div><div class="wc-item-detail" title="${escapeHtml(item.detail)}">${escapeHtml(item.detail)}</div></div>
-      <div class="wc-item-actions">${member ? dibsMarkup(member, view) : ""}${item.url ? `<a class="wc-link ${item.severity === "urgent" ? "primary" : ""}" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.actionLabel || "Open")}</a>` : ""}</div>
+      <div class="wc-item-actions">${member ? dibsMarkup(member, view, claim) : ""}${item.url ? attackLinkMarkup(item.url, memberId, item.actionLabel || "Open", view, item.severity === "urgent", claim) : ""}</div>
     </div>`;
   }
 
-  function retaliationMarkup(attack) {
+  function retaliationMarkup(attack, view) {
     const remaining = core.duration((Number(attack.expiresAt || 0) * 1000) - state.nowMs);
     const target = attack.defenderName ? `Hit ${attack.defenderName}` : "Faction hit";
     return `<div class="wc-item retal">
       <div class="wc-item-text"><div class="wc-item-title">${escapeHtml(attack.attackerName || `Player ${attack.attackerId}`)}</div><div class="wc-item-detail">${escapeHtml(`${target} - ${remaining} left`)}</div></div>
-      <a class="wc-link primary" href="${escapeHtml(attack.attackUrl || core.attackUrl(attack.attackerId))}" target="_blank" rel="noopener noreferrer">Attack</a>
+      ${attackLinkMarkup(attack.attackUrl || core.attackUrl(attack.attackerId), attack.attackerId, "Attack", view, true)}
     </div>`;
   }
 
@@ -997,7 +1034,7 @@
           ? view.actions.map((item) => actionMarkup(item, view)).join("")
           : `<div class="wc-empty">No immediate actions.</div>`;
     const retaliationSection = view.retaliation.length
-      ? `<div class="wc-section"><div class="wc-section-title"><span>Retaliations</span><span class="wc-count">${view.retaliation.length}</span></div>${view.retaliation.map(retaliationMarkup).join("")}</div>`
+      ? `<div class="wc-section"><div class="wc-section-title"><span>Retaliations</span><span class="wc-count">${view.retaliation.length}</span></div>${view.retaliation.map((attack) => retaliationMarkup(attack, view)).join("")}</div>`
       : "";
     const ownFactionLabel = view.ownFactionName || (view.ownFactionId ? `Faction ${view.ownFactionId}` : "");
     const enemyFactionLabel = view.enemyFactionName || (view.enemyFactionId ? `Faction ${view.enemyFactionId}` : "");
@@ -1021,7 +1058,7 @@
       : "";
 
     panel.innerHTML = `<div class="wc-header">
-      <div class="wc-heading"><div class="wc-title-row"><span class="wc-player">${escapeHtml(state.session?.playerName || "War Companion")}</span><span class="wc-version">v${SCRIPT_VERSION}</span><span class="wc-header-status"><span class="wc-dot ${status.tone}"></span>${escapeHtml(status.label)}</span></div>${matchupLabel ? `<div class="wc-matchup" title="${escapeHtml(matchupTitle)}">${escapeHtml(matchupLabel)}</div>` : ""}</div>
+      <div class="wc-heading"><div class="wc-title-row"><span class="wc-player">${escapeHtml(state.session?.playerName || "Warbuddy")}</span><span class="wc-version">v${SCRIPT_VERSION}</span><span class="wc-header-status"><span class="wc-dot ${status.tone}"></span>${escapeHtml(status.label)}</span></div>${matchupLabel ? `<div class="wc-matchup" title="${escapeHtml(matchupTitle)}">${escapeHtml(matchupLabel)}</div>` : ""}</div>
       <button class="wc-button wc-icon" data-action="collapse" title="${state.collapsed ? "Expand and resume" : "Collapse and pause"}">${state.collapsed ? "+" : "-"}</button>
     </div>
     <div class="wc-body">
@@ -1085,6 +1122,12 @@
         event.stopPropagation();
         const memberId = Number(event.currentTarget?.dataset?.dibsTarget || 0);
         const action = String(event.currentTarget?.dataset?.dibsAction || "");
+        if (action === "close") {
+          state.dibsInspectTargetId = 0;
+          event.currentTarget.blur?.();
+          scheduleRender();
+          return;
+        }
         if (action === "inspect") {
           state.dibsInspectTargetId = state.dibsInspectTargetId === memberId ? 0 : memberId;
           scheduleRender();
@@ -1177,7 +1220,7 @@
 
   function syncPageActivation() {
     startPageObserver();
-    const active = core.isWarCompanionPageUrl(window.location.href);
+    const active = core.isWarbuddyPageUrl(window.location.href);
     if (!active) {
       if (state.active || document.getElementById(PANEL_ID)) {
         stopTicker();
@@ -1195,7 +1238,7 @@
   }
 
   registerMenuCommand("Warbuddy: show panel", () => {
-    state.active = core.isWarCompanionPageUrl(window.location.href);
+    state.active = core.isWarbuddyPageUrl(window.location.href);
     if (!state.active) {
       window.alert(`Warbuddy v${SCRIPT_VERSION} is installed, but this is not a supported Torn faction or attack page.\n\n${window.location.href}`);
       return;
@@ -1205,7 +1248,7 @@
   });
 
   registerMenuCommand("Warbuddy: diagnostics", () => {
-    const routeMatches = core.isWarCompanionPageUrl(window.location.href);
+    const routeMatches = core.isWarbuddyPageUrl(window.location.href);
     const panel = document.getElementById(PANEL_ID);
     window.alert([
       `Warbuddy v${SCRIPT_VERSION}`,
@@ -1234,6 +1277,13 @@
   });
 
   document.addEventListener("visibilitychange", syncForegroundState);
+  document.addEventListener("pointerdown", (event) => {
+    if (!state.dibsInspectTargetId) return;
+    const target = event.target;
+    if (target && typeof target.closest === "function" && target.closest(`#${PANEL_ID} .wc-dibs-wrap`)) return;
+    state.dibsInspectTargetId = 0;
+    scheduleRender();
+  }, true);
   window.addEventListener("focus", syncForegroundState);
   window.addEventListener("online", syncForegroundState);
   window.addEventListener("offline", syncForegroundState);

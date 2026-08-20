@@ -15,4 +15,4 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Verify generated userscript is current
-        run: git diff --exit-code -- askelads-warbuddy.user.js askelads-warbuddy.meta.js
+        run: git diff --exit-code -- warbuddy.user.js warbuddy.meta.js askelads-warbuddy.user.js askelads-warbuddy.meta.js

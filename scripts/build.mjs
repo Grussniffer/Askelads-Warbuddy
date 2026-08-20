@@ -14,8 +14,12 @@ const bundled = `${header.trim()}\n\n${core.trim()}\n\n${userscript.trim()}\n`;
 const metadata = `${header.trim()}\n`;
 
 await Promise.all([
+  writeFile(resolve(root, "warbuddy.user.js"), bundled, "utf8"),
+  writeFile(resolve(root, "warbuddy.meta.js"), metadata, "utf8"),
   writeFile(resolve(root, "askelads-warbuddy.user.js"), bundled, "utf8"),
   writeFile(resolve(root, "askelads-warbuddy.meta.js"), metadata, "utf8"),
+  writeFile(resolve(root, "dist/warbuddy.user.js"), bundled, "utf8"),
+  writeFile(resolve(root, "dist/warbuddy.meta.js"), metadata, "utf8"),
   writeFile(resolve(root, "dist/askelads-warbuddy.user.js"), bundled, "utf8"),
   writeFile(resolve(root, "dist/askelads-warbuddy.meta.js"), metadata, "utf8"),
 ]);

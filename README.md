@@ -1,16 +1,17 @@
-# Askelads Warbuddy
+# Warbuddy
 
-## 0.1.25
+## 0.1.28
 
-- Hides Dibs when the faction admin disables shared claims.
-- Active claims are cleared by the backend while personal watched targets remain available.
+- Uses one active claim for both the Dibs hand and its matching attack link.
+- Keeps another member's `Dibsed` attack link solid gray and your own `Your Dibs` link green.
+- Makes Dibs details reliably dismissible through the close button, the hand, or a click elsewhere.
 
-Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
+Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
 ## Install
 
 1. Install Tampermonkey or another userscript manager.
-2. Open [Install Askelads Warbuddy](https://raw.githubusercontent.com/Grussniffer/Askelads-Warbuddy/main/askelads-warbuddy.user.js).
+2. Open [Install Warbuddy](https://raw.githubusercontent.com/Grussniffer/Warbuddy/main/warbuddy.user.js).
 3. Confirm the installation in your userscript manager.
 4. Open Torn and enter a Torn API key when Warbuddy asks for one.
 
@@ -38,7 +39,7 @@ Warbuddy displays information and links only. It never attacks, clicks, submits 
 - WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached scoped snapshot without making extra Torn API calls.
 - Torn PDA normally uses this compatible snapshot path and may therefore show **Live (compatible)** instead of **Live**.
 
-If the earlier **Lads War Companion** script is installed, remove or disable it before installing Warbuddy so two copies do not run on the same Torn page.
+If an earlier standalone war companion is installed separately, remove or disable it before installing Warbuddy so two copies do not run on the same Torn page.
 
 ## Development
 
@@ -47,7 +48,7 @@ npm test
 npm run build
 ```
 
-The build writes the installable `askelads-warbuddy.user.js` and update-only `askelads-warbuddy.meta.js` files to the repository root and `dist/`.
+The build writes the canonical `warbuddy.user.js` and update-only `warbuddy.meta.js` files to the repository root and `dist/`. It also keeps the old `askelads-warbuddy.*` filenames as update-compatible aliases for existing installations.
 
 Source files:
 
@@ -58,6 +59,26 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.28 - 20 August 2026
+
+- Keeps the hand marker and attack-link state synchronized from the same active claim.
+- Adds an explicit close button and outside-click dismissal to Dibs details.
+- Removes the sticky focus rule that could keep a Dibs popup visible after it was closed.
+- Identifies the userscript author as SneipLadd [2813921].
+
+### 0.1.27 - 20 August 2026
+
+- Makes claimed targets unmistakable on Action Queue and retaliation links.
+- Shows green `Your Dibs` for the viewer's own claim and muted gray `Dibsed` for another member's claim.
+- Keeps every Torn action link available; Dibs remains coordination, never a lock.
+
+### 0.1.26 - 20 August 2026
+
+- Renames the standalone project and userscript to Warbuddy.
+- Removes faction branding from metadata, visible fallback labels, runtime globals, panel IDs, and current storage keys.
+- Fetches faction names from the signed backend session and live roster state, with only a neutral faction-ID fallback.
+- Preserves updates through legacy generated filenames and migrates existing local userscript storage.
 
 ### 0.1.25 - 20 August 2026
 

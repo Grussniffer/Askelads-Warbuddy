@@ -20,11 +20,12 @@ it("keeps package and userscript release versions aligned", async () => {
   assert.match(userscript, new RegExp(`const SCRIPT_VERSION = "${escapedVersion}";`));
 });
 
-const bootUserscript = async (href, { withBody = true, visibilityState = "hidden" } = {}) => {
+const bootUserscript = async (href, { withBody = true, visibilityState = "hidden", storedValues = {} } = {}) => {
   const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
   const elements = new Map();
   const documentListeners = new Map();
   const menuCommands = new Map();
+  const storageValues = new Map(Object.entries(storedValues));
   let observerCallback = null;
   let intervalCount = 0;
   const mount = {
@@ -48,8 +49,12 @@ const bootUserscript = async (href, { withBody = true, visibilityState = "hidden
         id: "",
         tagName: String(tagName || "").toUpperCase(),
         parentNode: null,
+        offsetWidth: 320,
+        offsetHeight: 100,
+        style: { removeProperty() {} },
         classList: { toggle() {} },
         addEventListener() {},
+        getBoundingClientRect: () => ({ left: 10, top: 10, width: 320, height: 100 }),
         querySelector: () => null,
         querySelectorAll: () => [],
         remove() { elements.delete(this.id); },
@@ -58,15 +63,15 @@ const bootUserscript = async (href, { withBody = true, visibilityState = "hidden
   };
   let routeCheck = null;
   const context = {
-    AskeladdsWarCompanionCore: core,
+    WarbuddyCore: core,
     URL,
     console,
     document,
     location: { href },
     GM_addStyle() {},
-    GM_getValue: (_key, fallback) => fallback,
-    GM_setValue() {},
-    GM_deleteValue() {},
+    GM_getValue: (key, fallback) => storageValues.has(key) ? storageValues.get(key) : fallback,
+    GM_setValue: (key, value) => storageValues.set(key, value),
+    GM_deleteValue: (key) => storageValues.delete(key),
     GM_registerMenuCommand(name, callback) { menuCommands.set(name, callback); },
     MutationObserver: class {
       constructor(callback) { observerCallback = callback; }
@@ -87,6 +92,7 @@ const bootUserscript = async (href, { withBody = true, visibilityState = "hidden
   return {
     elements,
     menuCommands,
+    storageValues,
     intervalCount: () => intervalCount,
     routeCheck: () => routeCheck?.(),
     notifyMutation: () => observerCallback?.([]),
@@ -98,7 +104,7 @@ const bootUserscript = async (href, { withBody = true, visibilityState = "hidden
   };
 };
 
-describe("War Companion action queue", () => {
+describe("Warbuddy action queue", () => {
   it("prioritizes urgent chain and hospital actions before online targets", () => {
     const nowMs = 2_000_000_000_000;
     const items = core.buildActionQueue({
@@ -236,7 +242,7 @@ describe("War Companion action queue", () => {
   });
 });
 
-describe("War Companion live state", () => {
+describe("Warbuddy live state", () => {
   it("applies full snapshots and ordered deltas", () => {
     const full = core.applyRosterUpdate(undefined, {
       version: 4,
@@ -312,6 +318,48 @@ describe("War Companion live state", () => {
     assert.equal(core.activeDibsClaim(payload, 103, nowMs), undefined);
   });
 
+  it("makes claimed attacks obvious without blocking their links", () => {
+    const claim = {
+      claimedByPlayerId: "2813921",
+      claimedByPlayerName: "SneipLadd",
+    };
+
+    assert.deepEqual(core.dibsAttackPresentation(undefined, "2813921", "Attack"), {
+      state: "free",
+      label: "Attack",
+      title: "Attack",
+    });
+    assert.deepEqual(core.dibsAttackPresentation(claim, "2813921", "Attack"), {
+      state: "mine",
+      label: "Your Dibs",
+      title: "Your Dibs - Attack",
+    });
+    assert.deepEqual(core.dibsAttackPresentation(claim, "999", "Attack"), {
+      state: "taken",
+      label: "Dibsed",
+      title: "Dibsed by SneipLadd - Attack anyway",
+    });
+  });
+
+  it("renders another member's Dibs as a solid gray link that stays clickable", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes(".wc-link.dibs-taken { border-color:#a1a1aa; background:#52525b;"));
+    assert.ok(source.includes('data-dibs-state="${presentation.state}" href="${escapeHtml(url)}"'));
+    assert.ok(source.includes("dibsMarkup(member, view, claim)"));
+    assert.ok(source.includes('attackLinkMarkup(item.url, memberId, item.actionLabel || "Open", view, item.severity === "urgent", claim)'));
+  });
+
+  it("lets Dibs details close without a sticky focus state", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('data-dibs-action="close"'));
+    assert.ok(source.includes('document.addEventListener("pointerdown"'));
+    assert.ok(source.includes("state.dibsInspectTargetId = 0"));
+    assert.ok(!source.includes(".wc-dibs-wrap:focus-within .wc-dibs-tip"));
+    assert.ok(!source.includes(".wc-dibs-wrap:hover .wc-dibs-tip"));
+  });
+
   it("defaults Dibs on and honors either faction-level disable switch", () => {
     assert.equal(core.dibsFeatureEnabled(undefined), true);
     assert.equal(core.dibsFeatureEnabled({ enabled: true, dibsEnabled: true }), true);
@@ -320,7 +368,7 @@ describe("War Companion live state", () => {
   });
 });
 
-describe("War Companion panel state", () => {
+describe("Warbuddy panel state", () => {
   it("preserves disclosures and independent scroll positions across live renders", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
@@ -333,14 +381,14 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes("nextTargetList.scrollTop = state.targetListScrollTop"));
     assert.ok(source.includes('nextTargetList.addEventListener("scroll"'));
     assert.ok(source.includes("state.privacyOpen = event.currentTarget.open"));
-    assert.ok(source.includes("core.isWarCompanionPageUrl(window.location.href)"));
+    assert.ok(source.includes("core.isWarbuddyPageUrl(window.location.href)"));
   });
 
   it("keeps the API key field out of browser login autofill", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.25"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.28"'));
     assert.ok(source.includes('if (!core.dibsFeatureEnabled(state.settings)) return ""'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
@@ -443,11 +491,30 @@ describe("War Companion panel state", () => {
   it("persists a draggable panel position", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
-    assert.ok(source.includes('const POSITION_STORAGE = "lads_war_companion_position"'));
+    assert.ok(source.includes('const POSITION_STORAGE = "warbuddy_position"'));
+    assert.ok(source.includes('[KEY_STORAGE]: "lads_war_companion_api_key"'));
+    assert.ok(source.includes('storage.set(key, legacyValue)'));
     assert.ok(source.includes('header.addEventListener("pointerdown"'));
     assert.ok(source.includes('header.addEventListener("pointermove"'));
     assert.ok(source.includes("setPanelPosition(panel, { left: rect.left, top: rect.top }, true)"));
     assert.ok(source.includes('registerMenuCommand("Warbuddy: reset position"'));
+  });
+
+  it("migrates existing local settings to faction-neutral storage keys", async () => {
+    const page = await bootUserscript("https://www.torn.com/factions.php?step=your&type=1", {
+      storedValues: {
+        lads_war_companion_api_key: "legacy-key",
+        lads_war_companion_collapsed: "1",
+        lads_war_companion_position: '{"left":20,"top":30}',
+      },
+    });
+
+    assert.equal(page.storageValues.get("warbuddy_api_key"), "legacy-key");
+    assert.equal(page.storageValues.get("warbuddy_collapsed"), "1");
+    assert.equal(page.storageValues.get("warbuddy_position"), '{"left":20,"top":30}');
+    assert.equal(page.storageValues.has("lads_war_companion_api_key"), false);
+    assert.equal(page.storageValues.has("lads_war_companion_collapsed"), false);
+    assert.equal(page.storageValues.has("lads_war_companion_position"), false);
   });
 
   it("keeps the socket alive while a visible page briefly loses focus", async () => {
@@ -507,7 +574,7 @@ describe("War Companion panel state", () => {
   });
 });
 
-describe("War Companion route activation", () => {
+describe("Warbuddy route activation", () => {
   it("runs throughout Torn faction pages", () => {
     assert.equal(core.isFactionPageUrl("https://www.torn.com/factions.php?step=your#/war/rank"), true);
     assert.equal(core.isFactionPageUrl("https://torn.com/factions.php?step=profile&ID=41309"), true);
@@ -515,42 +582,45 @@ describe("War Companion route activation", () => {
   });
 
   it("also runs on the exact Torn attack page", () => {
-    assert.equal(core.isWarCompanionPageUrl("https://www.torn.com/page.php?sid=attack"), true);
-    assert.equal(core.isWarCompanionPageUrl("https://torn.com/page.php?sid=attack&user2ID=123"), true);
+    assert.equal(core.isWarbuddyPageUrl("https://www.torn.com/page.php?sid=attack"), true);
+    assert.equal(core.isWarbuddyPageUrl("https://torn.com/page.php?sid=attack&user2ID=123"), true);
     assert.equal(core.attackPageTargetId("https://torn.com/page.php?sid=attack&user2ID=123"), 123);
   });
 
   it("stays inactive on Bazaar and unrelated Torn pages", () => {
-    assert.equal(core.isWarCompanionPageUrl("https://www.torn.com/bazaar.php"), false);
-    assert.equal(core.isWarCompanionPageUrl("https://www.torn.com/page.php?sid=stocks"), false);
-    assert.equal(core.isWarCompanionPageUrl("https://example.com/factions.php#/war/rank"), false);
+    assert.equal(core.isWarbuddyPageUrl("https://www.torn.com/bazaar.php"), false);
+    assert.equal(core.isWarbuddyPageUrl("https://www.torn.com/page.php?sid=stocks"), false);
+    assert.equal(core.isWarbuddyPageUrl("https://example.com/factions.php#/war/rank"), false);
   });
 
   it("mounts and restores the panel on faction and attack pages without mounting elsewhere", async () => {
     const faction = await bootUserscript("https://www.torn.com/factions.php?step=your&type=1", { withBody: false });
-    assert.equal(faction.elements.has("lads-war-companion"), false);
+    assert.equal(faction.elements.has("warbuddy-panel"), false);
 
     faction.activateBody();
-    assert.equal(faction.elements.has("lads-war-companion"), true);
-    assert.equal(faction.elements.get("lads-war-companion").tagName, "DIV");
+    assert.equal(faction.elements.has("warbuddy-panel"), true);
+    assert.equal(faction.elements.get("warbuddy-panel").tagName, "DIV");
     assert.equal(faction.menuCommands.has("Warbuddy: diagnostics"), true);
 
-    faction.elements.get("lads-war-companion").remove();
+    faction.elements.get("warbuddy-panel").remove();
     faction.notifyMutation();
-    assert.equal(faction.elements.has("lads-war-companion"), true);
+    assert.equal(faction.elements.has("warbuddy-panel"), true);
 
     const bazaar = await bootUserscript("https://www.torn.com/bazaar.php");
-    assert.equal(bazaar.elements.has("lads-war-companion"), false);
+    assert.equal(bazaar.elements.has("warbuddy-panel"), false);
 
     const attack = await bootUserscript("https://www.torn.com/page.php?sid=attack&user2ID=123");
-    assert.equal(attack.elements.has("lads-war-companion"), true);
+    assert.equal(attack.elements.has("warbuddy-panel"), true);
 
     const stocks = await bootUserscript("https://www.torn.com/page.php?sid=stocks");
-    assert.equal(stocks.elements.has("lads-war-companion"), false);
+    assert.equal(stocks.elements.has("warbuddy-panel"), false);
   });
 
   it("injects only on Torn faction and page routes, with exact runtime activation", async () => {
     const header = await readFile(new URL("../userscript.header.txt", import.meta.url), "utf8");
+    assert.match(header, /^\/\/ @name\s+Warbuddy$/m);
+    assert.match(header, /Grussniffer\/Warbuddy\/main\/warbuddy\.user\.js/);
+    assert.doesNotMatch(header, /Askelads|The Lads/i);
     assert.match(header, /@sandbox\s+DOM/);
     assert.match(header, /@match\s+https:\/\/www\.torn\.com\/factions\.php\*/);
     assert.match(header, /@include\s+https:\/\/www\.torn\.com\/page\.php\?\*sid=attack\*/);
