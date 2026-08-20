@@ -49,6 +49,13 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.7 - 20 August 2026
+
+- Drag the panel by its header; its position is saved locally and clamped to the current screen.
+- A **Warbuddy: reset position** command restores the default lower-right placement.
+- Visible tabs no longer tear down the live socket on brief browser-focus changes.
+- Interrupted sockets reconnect automatically, while diagnostics now include connection state and close details.
+
 ### 0.1.6 - 20 August 2026
 
 - The Torn API key entry no longer presents itself as a browser password field.

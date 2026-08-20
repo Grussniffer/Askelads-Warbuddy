@@ -193,13 +193,33 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.6"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.7"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
     assert.ok(source.includes('data-lpignore="true"'));
     assert.ok(source.includes('data-bwignore="true"'));
     assert.doesNotMatch(source, /data-field="api-key" type="password"/);
+  });
+
+  it("persists a draggable panel position", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('const POSITION_STORAGE = "lads_war_companion_position"'));
+    assert.ok(source.includes('header.addEventListener("pointerdown"'));
+    assert.ok(source.includes('header.addEventListener("pointermove"'));
+    assert.ok(source.includes("setPanelPosition(panel, { left: rect.left, top: rect.top }, true)"));
+    assert.ok(source.includes('registerMenuCommand("Warbuddy: reset position"'));
+  });
+
+  it("keeps the socket alive while a visible page briefly loses focus", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.doesNotMatch(source, /const isForeground = \(\) =>[^;]*document\.hasFocus/s);
+    assert.doesNotMatch(source, /addEventListener\("blur", syncForegroundState\)/);
+    assert.ok(source.includes('window.addEventListener("online", syncForegroundState)'));
+    assert.ok(source.includes('window.addEventListener("offline", syncForegroundState)'));
+    assert.doesNotMatch(source, /state\.error = "Live connection failed"/);
   });
 });
 

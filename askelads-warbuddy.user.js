@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.6
+// @version      0.1.7
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -209,11 +209,13 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.6";
+  const SCRIPT_VERSION = "0.1.7";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
+  const POSITION_STORAGE = "lads_war_companion_position";
   const REQUEST_TIMEOUT_MS = 30_000;
+  const PANEL_EDGE_GAP = 8;
   const TOPICS = ["war_tracker_settings", "war_tracker", "score", "retaliation"];
 
   const storage = {
@@ -254,6 +256,9 @@
     privacyOpen: false,
     active: false,
     renderQueued: false,
+    dragging: false,
+    lastSocketErrorAt: "",
+    lastSocketClose: null,
   };
 
   const escapeHtml = (value) => String(value ?? "")
@@ -277,10 +282,11 @@
   };
 
   addStyle(`
-    #${PANEL_ID} { display:block !important; visibility:visible !important; opacity:1 !important; position:fixed !important; right:10px !important; bottom:10px !important; z-index:2147483647 !important; width:min(320px,calc(100vw - 20px)); max-height:min(70vh,620px); overflow:hidden; border:1px solid #3f3f46; border-radius:7px; background:#111113; color:#f4f4f5; box-shadow:0 12px 32px rgba(0,0,0,.55); font:12px/1.35 Arial,Helvetica,sans-serif; }
+    #${PANEL_ID} { display:block !important; visibility:visible !important; opacity:1 !important; position:fixed !important; right:10px; bottom:10px; z-index:2147483647 !important; width:min(320px,calc(100vw - 20px)); max-height:min(70vh,620px); overflow:hidden; border:1px solid #3f3f46; border-radius:7px; background:#111113; color:#f4f4f5; box-shadow:0 12px 32px rgba(0,0,0,.55); font:12px/1.35 Arial,Helvetica,sans-serif; }
     #${PANEL_ID} * { box-sizing:border-box; letter-spacing:0; }
     #${PANEL_ID}.wc-collapsed .wc-body { display:none; }
-    #${PANEL_ID} .wc-header { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; padding:6px 8px; border-bottom:1px solid #27272a; background:#18181b; }
+    #${PANEL_ID} .wc-header { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; padding:6px 8px; border-bottom:1px solid #27272a; background:#18181b; cursor:move; touch-action:none; user-select:none; }
+    #${PANEL_ID}.wc-dragging .wc-header { cursor:grabbing; }
     #${PANEL_ID} .wc-title { min-width:0; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     #${PANEL_ID} .wc-version { color:#71717a; font-size:10px; font-weight:400; }
     #${PANEL_ID} .wc-body { max-height:calc(min(70vh,620px) - 34px); overflow:auto; padding:7px; }
@@ -378,9 +384,107 @@
   });
 
   const getStoredKey = () => String(storage.get(KEY_STORAGE, "") || "").trim();
-  const isForeground = () => state.active && document.visibilityState === "visible" && document.hasFocus();
+  const isForeground = () => state.active
+    && document.visibilityState !== "hidden"
+    && (typeof navigator === "undefined" || navigator.onLine !== false);
   const backendUrl = (path) => `${BACKEND_BASE_URL.replace(/\/$/, "")}${path}`;
   const socketUrl = () => `${BACKEND_BASE_URL.replace(/^http/i, "ws").replace(/\/$/, "")}/ws`;
+
+  function getStoredPanelPosition() {
+    const raw = storage.get(POSITION_STORAGE, "");
+    if (!raw) return null;
+    try {
+      const position = JSON.parse(String(raw));
+      const left = Number(position?.left);
+      const top = Number(position?.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) return { left, top };
+    } catch {
+      // Ignore invalid coordinates left by an older browser session.
+    }
+    storage.remove(POSITION_STORAGE);
+    return null;
+  }
+
+  function clampPanelPosition(panel, left, top) {
+    const width = panel.offsetWidth || panel.getBoundingClientRect().width || 320;
+    const height = panel.offsetHeight || panel.getBoundingClientRect().height || 80;
+    return {
+      left: Math.min(Math.max(PANEL_EDGE_GAP, left), Math.max(PANEL_EDGE_GAP, window.innerWidth - width - PANEL_EDGE_GAP)),
+      top: Math.min(Math.max(PANEL_EDGE_GAP, top), Math.max(PANEL_EDGE_GAP, window.innerHeight - height - PANEL_EDGE_GAP)),
+    };
+  }
+
+  function setPanelPosition(panel, position, persist = false) {
+    if (!panel || !position) return;
+    const next = clampPanelPosition(panel, position.left, position.top);
+    panel.style.left = `${next.left}px`;
+    panel.style.top = `${next.top}px`;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+    if (persist) storage.set(POSITION_STORAGE, JSON.stringify(next));
+  }
+
+  function applyStoredPanelPosition() {
+    const panel = document.getElementById(PANEL_ID);
+    const position = getStoredPanelPosition();
+    if (panel && position) setPanelPosition(panel, position);
+  }
+
+  function resetPanelPosition() {
+    storage.remove(POSITION_STORAGE);
+    const panel = document.getElementById(PANEL_ID);
+    if (!panel) return;
+    for (const property of ["left", "top", "right", "bottom"]) panel.style.removeProperty(property);
+  }
+
+  function attachPanelDragHandler(panel) {
+    const header = panel?.querySelector(".wc-header");
+    if (!header) return;
+    let drag = null;
+
+    const stopDrag = (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      header.releasePointerCapture?.(event.pointerId);
+      panel.classList.remove("wc-dragging");
+      state.dragging = false;
+      if (drag.moved) {
+        const rect = panel.getBoundingClientRect();
+        setPanelPosition(panel, { left: rect.left, top: rect.top }, true);
+      }
+      drag = null;
+      scheduleRender();
+    };
+
+    header.addEventListener("pointerdown", (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      if (event.target?.closest?.("button, a, input, summary, details")) return;
+      const rect = panel.getBoundingClientRect();
+      drag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        left: rect.left,
+        top: rect.top,
+        moved: false,
+      };
+      state.dragging = true;
+      header.setPointerCapture?.(event.pointerId);
+    });
+
+    header.addEventListener("pointermove", (event) => {
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+      drag.moved = true;
+      panel.classList.add("wc-dragging");
+      event.preventDefault();
+      setPanelPosition(panel, { left: drag.left + dx, top: drag.top + dy });
+    });
+
+    header.addEventListener("pointerup", stopDrag);
+    header.addEventListener("pointercancel", stopDrag);
+  }
 
   async function getProfileWithKey(key) {
     const query = `key=${encodeURIComponent(key)}&timestamp=${Date.now()}`;
@@ -526,24 +630,29 @@
       state.phase = "connecting";
       state.socketClosing = false;
       scheduleRender();
-      const socket = new WebSocket(socketUrl());
+      const socket = new window.WebSocket(socketUrl());
       state.socket = socket;
       socket.addEventListener("open", () => {
         if (socket !== state.socket) return;
         state.phase = "connected";
         state.reconnectAttempt = 0;
         state.error = "";
+        state.lastSocketClose = null;
         subscribeTopics(socket);
         scheduleRender();
       });
       socket.addEventListener("message", handleSocketMessage);
       socket.addEventListener("error", () => {
         if (socket !== state.socket) return;
-        state.error = "Live connection failed";
-        scheduleRender();
+        state.lastSocketErrorAt = new Date().toISOString();
       });
       socket.addEventListener("close", (event) => {
         if (socket === state.socket) state.socket = null;
+        state.lastSocketClose = {
+          code: Number(event.code || 1006),
+          reason: String(event.reason || ""),
+          at: new Date().toISOString(),
+        };
         if (state.socketClosing || !isForeground()) {
           state.socketClosing = false;
           state.phase = "paused";
@@ -553,12 +662,19 @@
         if (event.code === 1008) {
           state.token = "";
           state.session = null;
+          state.error = "Live authorization expired. Reconnecting.";
+        } else if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          state.error = "Device is offline. Live updates will resume automatically.";
+        } else if (state.reconnectAttempt >= 2) {
+          state.error = `Live connection interrupted (code ${event.code || 1006}). Retrying automatically.`;
         }
         state.phase = "connecting";
         scheduleRender();
         scheduleReconnect();
       });
-    } catch {
+    } catch (error) {
+      if (!state.error) state.error = String(error?.message || "Could not start the live connection");
+      scheduleRender();
       scheduleReconnect();
     }
   }
@@ -637,6 +753,7 @@
 
   function render() {
     state.renderQueued = false;
+    if (state.dragging) return;
     const mount = document.body;
     if (!mount) return;
     if (!state.active) {
@@ -687,6 +804,8 @@
     panel.querySelector('[data-section="privacy"]')?.addEventListener("toggle", (event) => {
       state.privacyOpen = event.currentTarget.open;
     });
+    applyStoredPanelPosition();
+    attachPanelDragHandler(panel);
 
     panel.querySelector('[data-action="collapse"]')?.addEventListener("click", () => {
       state.collapsed = !state.collapsed;
@@ -794,13 +913,27 @@
       `Document body: ${document.body ? "ready" : "missing"}`,
       `Panel mounted: ${panel ? "yes" : "no"}`,
       `Panel visible: ${panel ? getComputedStyle(panel).display !== "none" && getComputedStyle(panel).visibility !== "hidden" : "n/a"}`,
+      `Phase: ${state.phase}`,
+      `Page visibility: ${document.visibilityState}`,
+      `Browser online: ${typeof navigator === "undefined" || navigator.onLine !== false ? "yes" : "no"}`,
+      `WebSocket state: ${state.socket?.readyState ?? "none"}`,
+      `Last socket error: ${state.lastSocketErrorAt || "none"}`,
+      `Last close: ${state.lastSocketClose ? `${state.lastSocketClose.code}${state.lastSocketClose.reason ? ` (${state.lastSocketClose.reason})` : ""} at ${state.lastSocketClose.at}` : "none"}`,
+      `Endpoint: ${socketUrl()}`,
       window.location.href,
     ].join("\n"));
   });
 
+  registerMenuCommand("Warbuddy: reset position", () => {
+    resetPanelPosition();
+    applyStoredPanelPosition();
+  });
+
   document.addEventListener("visibilitychange", syncForegroundState);
   window.addEventListener("focus", syncForegroundState);
-  window.addEventListener("blur", syncForegroundState);
+  window.addEventListener("online", syncForegroundState);
+  window.addEventListener("offline", syncForegroundState);
+  window.addEventListener("resize", applyStoredPanelPosition);
   window.addEventListener("hashchange", syncPageActivation);
   window.addEventListener("popstate", syncPageActivation);
   window.addEventListener("pageshow", start);
