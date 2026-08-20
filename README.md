@@ -1,10 +1,10 @@
 # Askelads Warbuddy
 
-## 0.1.19
+## 0.1.20
 
-- Keeps routine WebSocket rejection quiet while switching to compatible mode.
-- Shows a connection error only after three consecutive compatible snapshot failures.
-- Keeps authentication and permission errors immediate.
+- Keeps the watched-target list at the user's current position during live updates.
+- Prevents the one-second ticker and incoming snapshots from jumping the list back to the top.
+- Keeps the main panel and watched-target list scroll positions independent.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -58,6 +58,11 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.20 - 20 August 2026
+
+- Preserves the watched-target list scroll position across live renders.
+- Resets that position only when the watched-target section is deliberately closed.
 
 ### 0.1.19 - 20 August 2026
 

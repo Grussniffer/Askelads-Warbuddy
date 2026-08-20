@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.19";
+  const SCRIPT_VERSION = "0.1.20";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -69,6 +69,7 @@
     targetsDirty: false,
     targetsSaving: false,
     targetError: "",
+    targetListScrollTop: 0,
     active: false,
     renderQueued: false,
     dragging: false,
@@ -866,6 +867,8 @@
     }
     const currentBody = panel.querySelector(".wc-body");
     const bodyScrollTop = Number(currentBody?.scrollTop || 0);
+    const currentTargetList = panel.querySelector(".wc-target-list");
+    if (currentTargetList) state.targetListScrollTop = Number(currentTargetList.scrollTop || 0);
     const privacyDisclosure = panel.querySelector('[data-section="privacy"]');
     if (privacyDisclosure) state.privacyOpen = privacyDisclosure.open;
     const targetsDisclosure = panel.querySelector('[data-section="targets"]');
@@ -923,6 +926,13 @@
 
     const nextBody = panel.querySelector(".wc-body");
     if (nextBody) nextBody.scrollTop = bodyScrollTop;
+    const nextTargetList = panel.querySelector(".wc-target-list");
+    if (nextTargetList) {
+      nextTargetList.scrollTop = state.targetListScrollTop;
+      nextTargetList.addEventListener("scroll", (event) => {
+        state.targetListScrollTop = Number(event.currentTarget?.scrollTop || 0);
+      }, { passive: true });
+    }
     panel.querySelector('[data-section="privacy"]')?.addEventListener("toggle", (event) => {
       state.privacyOpen = event.currentTarget.open;
     });
@@ -933,6 +943,7 @@
       state.targetDraft = savedTargetIds();
       state.targetsDirty = false;
       state.targetError = "";
+      if (!open) state.targetListScrollTop = 0;
       scheduleRender();
     });
     applyStoredPanelPosition();

@@ -270,13 +270,17 @@ describe("War Companion live state", () => {
 });
 
 describe("War Companion panel state", () => {
-  it("preserves the Privacy disclosure and panel scroll position across live renders", async () => {
+  it("preserves disclosures and independent scroll positions across live renders", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes("privacyOpen: false"));
     assert.ok(source.includes('if (privacyDisclosure) state.privacyOpen = privacyDisclosure.open'));
     assert.ok(source.includes('data-section="privacy"${state.privacyOpen ? " open" : ""}'));
     assert.ok(source.includes("if (nextBody) nextBody.scrollTop = bodyScrollTop"));
+    assert.ok(source.includes("targetListScrollTop: 0"));
+    assert.ok(source.includes("state.targetListScrollTop = Number(currentTargetList.scrollTop || 0)"));
+    assert.ok(source.includes("nextTargetList.scrollTop = state.targetListScrollTop"));
+    assert.ok(source.includes('nextTargetList.addEventListener("scroll"'));
     assert.ok(source.includes("state.privacyOpen = event.currentTarget.open"));
     assert.ok(source.includes("core.isFactionPageUrl(window.location.href)"));
   });
@@ -285,7 +289,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.19"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.20"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
