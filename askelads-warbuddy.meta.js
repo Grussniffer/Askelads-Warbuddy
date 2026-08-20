@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.21
-// @description  Shows a war action queue, personal watched targets, and live retaliation opportunities inside Torn.
+// @version      0.1.22
+// @description  Shows a war action queue, shared target Dibs, watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
 // @supportURL   https://github.com/Grussniffer/Askelads-Warbuddy/issues
@@ -10,6 +10,8 @@
 // @updateURL    https://raw.githubusercontent.com/Grussniffer/Askelads-Warbuddy/main/askelads-warbuddy.meta.js
 // @match        https://www.torn.com/factions.php*
 // @match        https://torn.com/factions.php*
+// @include      https://www.torn.com/page.php?*sid=attack*
+// @include      https://torn.com/page.php?*sid=attack*
 // @run-at       document-idle
 // @sandbox      DOM
 // @grant        GM_addStyle

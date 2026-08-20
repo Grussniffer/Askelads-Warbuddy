@@ -1,9 +1,9 @@
 # Askelads Warbuddy
 
-## 0.1.21
+## 0.1.22
 
-- Removes the explanatory copy from the watched-target picker.
-- Keeps only the target count, member choices, errors, and Save action visible.
+- Adds shared target Dibs to Warbuddy and the website War Tracker.
+- Keeps the hand control inside existing target rows and enables Warbuddy on Torn's attack page.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -21,10 +21,11 @@ The install URL ends in `.user.js` and includes update metadata, so supported us
 - Current chain-risk and hospital-exit opportunities from the faction War Tracker.
 - Online enemy targets when they are relevant to the action queue.
 - Personal watched enemies within one minute of landing or leaving hospital, and while attackable in Torn.
+- A compact shared Dibs marker for attackable enemies and enemies leaving hospital within five minutes.
 - Active retaliation windows with explicit links to Torn.
 - A stable empty state when there are no immediate actions.
 
-Warbuddy displays information and links only. It does not attack, click, submit, claim, notify, or perform Torn actions for the player.
+Warbuddy displays information and links only. It never attacks, clicks, submits Torn actions, or notifies automatically. **Dibs** is an explicit coordination button that updates only the Grusmedia backend.
 
 ## Access And Privacy
 
@@ -32,7 +33,7 @@ Warbuddy displays information and links only. It does not attack, click, submit,
 - The key is used to identify the player and faction, then exchanged for a six-hour, faction-scoped companion session.
 - The key is not saved to the backend during that exchange.
 - Warbuddy connects only while its panel is expanded on a visible Torn faction tab and the device is online.
-- Its backend session can read War Tracker settings, rosters, score, and retaliation for the verified faction, and save only that player's watched-target list.
+- Its backend session can read War Tracker settings, rosters, score, retaliation, and shared Dibs for the verified faction. It can save only that player's watched-target list and Dibs actions.
 - Other players' watched-target lists are never returned to the script.
 - WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached scoped snapshot without making extra Torn API calls.
 - Torn PDA normally uses this compatible snapshot path and may therefore show **Live (compatible)** instead of **Live**.
@@ -57,6 +58,15 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.22 - 20 August 2026
+
+- Adds shared, faction-scoped Dibs without extra Torn API calls or database storage.
+- Allows one active target per player for up to ten minutes; eligible targets are attackable now or leave hospital within five minutes.
+- Keeps a hospital claim through its original stay, then clears it after a new hospitalization or 30 seconds after release.
+- Adds the same compact grey, green, and amber hand marker to queue and watched-target rows.
+- Runs the existing compact Warbuddy panel on Torn's attack page while keeping unrelated Torn pages inactive.
+- Retains all existing mobile layout, watched-target, retaliation, drag, collapse, PDA, and fallback behavior.
 
 ### 0.1.21 - 20 August 2026
 

@@ -1,8 +1,8 @@
 {
   "name": "askelads-warbuddy",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "private": true,
-  "description": "Torn war action queue, retaliation, and personal target userscript.",
+  "description": "Torn war action queue, shared Dibs, retaliation, and personal target userscript.",
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test tests/core.test.mjs",

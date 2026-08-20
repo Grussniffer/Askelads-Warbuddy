@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.21
-// @description  Shows a war action queue, personal watched targets, and live retaliation opportunities inside Torn.
+// @version      0.1.22
+// @description  Shows a war action queue, shared target Dibs, watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
 // @supportURL   https://github.com/Grussniffer/Askelads-Warbuddy/issues
@@ -10,6 +10,8 @@
 // @updateURL    https://raw.githubusercontent.com/Grussniffer/Askelads-Warbuddy/main/askelads-warbuddy.meta.js
 // @match        https://www.torn.com/factions.php*
 // @match        https://torn.com/factions.php*
+// @include      https://www.torn.com/page.php?*sid=attack*
+// @include      https://torn.com/page.php?*sid=attack*
 // @run-at       document-idle
 // @sandbox      DOM
 // @grant        GM_addStyle
@@ -35,6 +37,7 @@
   const CHAIN_WINDOW_MS = 5 * 60 * 1000;
   const URGENT_CHAIN_MS = 2 * 60 * 1000;
   const WATCHED_TARGET_WINDOW_MS = 60 * 1000;
+  const DIBS_HOSPITAL_WINDOW_MS = 5 * 60 * 1000;
 
   const toTimestampMs = (value) => {
     const numeric = Number(value || 0);
@@ -73,6 +76,34 @@
     return /^\/factions(?:\.php)?(?:\/|$)/i.test(url.pathname);
   };
 
+  const attackPageTargetId = (value) => {
+    let url;
+    try {
+      url = new URL(String(value || ""), "https://www.torn.com/");
+    } catch {
+      return 0;
+    }
+    if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return 0;
+    if (!/^\/page\.php$/i.test(url.pathname) || String(url.searchParams.get("sid") || "").toLowerCase() !== "attack") {
+      return 0;
+    }
+    const memberId = Number(url.searchParams.get("user2ID") || url.searchParams.get("user2id") || 0);
+    return Number.isSafeInteger(memberId) && memberId > 0 ? memberId : 0;
+  };
+
+  const isWarCompanionPageUrl = (value) => {
+    if (isFactionPageUrl(value)) return true;
+    let url;
+    try {
+      url = new URL(String(value || ""), "https://www.torn.com/");
+    } catch {
+      return false;
+    }
+    return url.hostname.toLowerCase().replace(/^www\./, "") === "torn.com"
+      && /^\/page\.php$/i.test(url.pathname)
+      && String(url.searchParams.get("sid") || "").toLowerCase() === "attack";
+  };
+
   const memberStatus = (member) =>
     String(member?.status?.userStatus || member?.status?.state || member?.status?.status || "").toLowerCase();
 
@@ -89,6 +120,32 @@
       .map((memberId) => Number(memberId))
       .filter((memberId) => Number.isSafeInteger(memberId) && memberId > 0)
   );
+
+  const dibsEligibility = (member, nowMs = Date.now()) => {
+    const status = memberStatus(member);
+    if (!status) return { eligible: false, state: "unknown" };
+    if (status.includes("hospital")) {
+      const hospitalUntil = toTimestampMs(member?.status?.untill || member?.status?.until);
+      return {
+        eligible: hospitalUntil > nowMs && hospitalUntil - nowMs <= DIBS_HOSPITAL_WINDOW_MS,
+        state: "hospitalized",
+        hospitalUntil,
+      };
+    }
+    if (status === "okay" || status.startsWith("okay ") || status.startsWith("okay -")) {
+      const current = memberLocation(member);
+      const destination = memberDestination(member);
+      const available = (!current || current.includes("torn")) && (!destination || destination.includes("torn"));
+      return { eligible: available, state: available ? "available" : "unavailable" };
+    }
+    return { eligible: false, state: "unavailable" };
+  };
+
+  const activeDibsClaim = (payload, targetMemberId, nowMs = Date.now()) =>
+    (Array.isArray(payload?.claims) ? payload.claims : []).find((claim) => (
+      Number(claim?.targetMemberId || 0) === Number(targetMemberId || 0)
+      && toTimestampMs(claim?.expiresAt) > nowMs
+    ));
 
   const scoreForFaction = (scores, factionId) => {
     if (scores instanceof Map) return scores.get(String(factionId));
@@ -179,6 +236,7 @@
         activeWatchedIds.add(memberId);
         watchedActions.push({
           key: `watched-flight-${memberId}`,
+          memberId,
           severity: "urgent",
           title: `${member.member_name} lands in Torn`,
           detail: `${duration(remaining)} - watched - ${bsp}`,
@@ -193,6 +251,7 @@
         activeWatchedIds.add(memberId);
         watchedActions.push({
           key: `watched-hospital-${memberId}`,
+          memberId,
           severity: "urgent",
           title: `${member.member_name} leaves hospital`,
           detail: `${duration(remaining)} - watched - ${bsp}`,
@@ -207,6 +266,7 @@
         activeWatchedIds.add(memberId);
         watchedActions.push({
           key: `watched-ready-${memberId}`,
+          memberId,
           severity: "urgent",
           title: `${member.member_name} is attackable now`,
           detail: `Watched target - ${bsp}`,
@@ -225,6 +285,7 @@
       if (remaining <= 0 || remaining > HOSPITAL_WINDOW_MS) continue;
       result.push({
         key: `hospital-${member.member_id}`,
+        memberId: Number(member.member_id || 0),
         severity: remaining <= URGENT_HOSPITAL_MS ? "urgent" : "watch",
         title: `${member.member_name} leaves hospital`,
         detail: `${duration(remaining)} - ${member.bsp ? `${formatBsp(member.bsp)} BSP` : "BSP unknown"}`,
@@ -245,6 +306,7 @@
     for (const member of onlineTargets) {
       result.push({
         key: `online-${member.member_id}`,
+        memberId: Number(member.member_id || 0),
         severity: "info",
         title: `${member.member_name} is online in Torn`,
         detail: member.bsp ? `${formatBsp(member.bsp)} BSP` : `Level ${member.level || "?"} - BSP unknown`,
@@ -268,14 +330,18 @@
       .sort((a, b) => Number(a.expiresAt || 0) - Number(b.expiresAt || 0));
 
   return {
+    activeDibsClaim,
     activeRetaliations,
+    attackPageTargetId,
     applyRosterUpdate,
     attackUrl,
     buildActionQueue,
+    dibsEligibility,
     duration,
     formatBsp,
     inferEnemyFactionId,
     isFactionPageUrl,
+    isWarCompanionPageUrl,
     scoreForFaction,
     toTimestampMs,
   };
@@ -288,7 +354,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.21";
+  const SCRIPT_VERSION = "0.1.22";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -300,7 +366,7 @@
   const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function";
   const PANEL_EDGE_GAP = 8;
   const MAX_WATCHED_TARGETS = 25;
-  const TOPICS = ["war_tracker_settings", "war_tracker", "score", "retaliation"];
+  const TOPICS = ["war_tracker_settings", "war_tracker", "score", "retaliation", "war_dibs"];
 
   const storage = {
     get(key, fallback = "") {
@@ -344,6 +410,11 @@
     scores: new Map(),
     settings: null,
     retaliation: { attacks: [] },
+    dibs: { claims: [] },
+    dibsBusyTargetId: 0,
+    dibsInspectTargetId: 0,
+    dibsError: "",
+    dibsErrorTimer: 0,
     nowMs: Date.now(),
     collapsed: String(storage.get(COLLAPSED_STORAGE, "")) === "1",
     privacyOpen: false,
@@ -410,6 +481,16 @@
     #${PANEL_ID} .wc-item.urgent { box-shadow:inset 3px 0 #ef4444; }
     #${PANEL_ID} .wc-item.watch { box-shadow:inset 3px 0 #f59e0b; }
     #${PANEL_ID} .wc-item.retal { box-shadow:inset 3px 0 #38bdf8; }
+    #${PANEL_ID} .wc-item-actions { display:flex; flex:0 0 auto; align-items:center; gap:5px; }
+    #${PANEL_ID} .wc-dibs-wrap { position:relative; display:inline-flex; flex:0 0 auto; align-items:center; }
+    #${PANEL_ID} .wc-dibs { display:inline-flex; width:16px; height:16px; flex:0 0 auto; align-items:center; justify-content:center; border:0; border-radius:3px; background:transparent; color:#a1a1aa; padding:0; font:11px/1 Arial,Helvetica,sans-serif; cursor:pointer; }
+    #${PANEL_ID} .wc-dibs:hover, #${PANEL_ID} .wc-dibs:focus-visible { background:#27272a; color:#e4e4e7; outline:1px solid #71717a; }
+    #${PANEL_ID} .wc-dibs.mine { color:#10b981; }
+    #${PANEL_ID} .wc-dibs.taken { color:#f59e0b; }
+    #${PANEL_ID} .wc-dibs:disabled { opacity:.45; cursor:wait; }
+    #${PANEL_ID} .wc-dibs-tip { position:absolute; right:0; bottom:calc(100% + 4px); z-index:3; display:none; width:max-content; max-width:min(190px,calc(100vw - 28px)); border:1px solid #3f3f46; border-radius:4px; background:#09090b; color:#e4e4e7; padding:4px 5px; box-shadow:0 6px 18px rgba(0,0,0,.45); font-size:10px; white-space:normal; }
+    #${PANEL_ID} .wc-dibs-wrap:hover .wc-dibs-tip, #${PANEL_ID} .wc-dibs-wrap:focus-within .wc-dibs-tip, #${PANEL_ID} .wc-dibs-wrap.open .wc-dibs-tip { display:block; }
+    #${PANEL_ID} .wc-dibs-release { display:block; width:100%; margin-top:4px; border:1px solid #3f3f46; border-radius:3px; background:#27272a; color:#f4f4f5; padding:3px 5px; font:inherit; font-weight:700; cursor:pointer; }
     #${PANEL_ID} .wc-row { display:flex; gap:5px; margin-top:6px; }
     #${PANEL_ID} .wc-input { min-width:0; flex:1; border:1px solid #3f3f46; border-radius:5px; background:#09090b; color:#f4f4f5; padding:6px; }
     #${PANEL_ID} .wc-secret-input { -webkit-text-security:disc; }
@@ -422,8 +503,9 @@
     #${PANEL_ID} summary { cursor:pointer; padding:5px 6px; color:#d4d4d8; font-weight:700; }
     #${PANEL_ID} .wc-summary-count { float:right; color:#a1a1aa; font-size:10px; font-weight:400; }
     #${PANEL_ID} .wc-target-list { max-height:180px; overflow:auto; border-top:1px solid #27272a; }
-    #${PANEL_ID} .wc-target-option { display:flex; align-items:center; gap:6px; min-height:30px; padding:4px 6px; border-top:1px solid #27272a; color:#e4e4e7; cursor:pointer; }
-    #${PANEL_ID} .wc-target-option:first-child { border-top:0; }
+    #${PANEL_ID} .wc-target-option-row { display:flex; min-height:30px; align-items:center; gap:4px; border-top:1px solid #27272a; padding-right:6px; }
+    #${PANEL_ID} .wc-target-option-row:first-child { border-top:0; }
+    #${PANEL_ID} .wc-target-option { display:flex; min-width:0; flex:1; align-items:center; gap:6px; padding:4px 6px; color:#e4e4e7; cursor:pointer; }
     #${PANEL_ID} .wc-target-option input { width:14px; height:14px; flex:0 0 auto; margin:0; accent-color:#10b981; }
     #${PANEL_ID} .wc-target-option span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     #${PANEL_ID} .wc-target-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; padding:6px; border-top:1px solid #27272a; }
@@ -768,6 +850,7 @@
       }
     }
     if (topic === "retaliation") state.retaliation = payload || { attacks: [] };
+    if (topic === "war_dibs") state.dibs = payload || { claims: [] };
     scheduleRender();
   }
 
@@ -799,6 +882,7 @@
     state.factionNames = factionNames;
     state.scores = scores;
     state.retaliation = snapshot?.retaliation || { attacks: [] };
+    state.dibs = snapshot?.dibs || { claims: [] };
     scheduleRender();
   }
 
@@ -1049,7 +1133,7 @@
       nowMs: state.nowMs,
     });
     const retaliation = core.activeRetaliations(state.retaliation, Math.floor(state.nowMs / 1000));
-    return { ownFactionId, ownFactionName, enemyFactionId, enemyFactionName, enemyRoster, actions, retaliation };
+    return { ownFactionId, ownFactionName, enemyFactionId, enemyFactionName, enemyRoster, actions, retaliation, dibs: state.dibs };
   }
 
   const statusView = () => {
@@ -1062,10 +1146,35 @@
     return { label: "Connecting", tone: "wait" };
   };
 
-  function actionMarkup(item) {
+  function dibsMarkup(member, view) {
+    if (state.settings?.enabled === false) return "";
+    const memberId = Number(member?.member_id || 0);
+    if (!Number.isSafeInteger(memberId) || memberId <= 0) return "";
+    const claim = core.activeDibsClaim(view.dibs, memberId, state.nowMs);
+    const eligibility = core.dibsEligibility(member, state.nowMs);
+    if (!claim && !eligibility.eligible) return "";
+    const isMine = !!claim && String(claim.claimedByPlayerId || "") === String(state.session?.playerId || "");
+    const tone = isMine ? "mine" : claim ? "taken" : "";
+    const busy = state.dibsBusyTargetId === memberId;
+    const remaining = claim ? core.duration(core.toTimestampMs(claim.expiresAt) - state.nowMs) : "";
+    const label = claim
+      ? `Dibs: ${claim.claimedByPlayerName || claim.claimedByPlayerId} - ${remaining} left`
+      : eligibility.state === "hospitalized"
+        ? `Claim Dibs - leaves hospital in ${core.duration(Number(eligibility.hospitalUntil || 0) - state.nowMs)}`
+        : "Claim Dibs - attackable now";
+    const action = claim ? "inspect" : "claim";
+    const open = state.dibsInspectTargetId === memberId ? " open" : "";
+    const release = isMine
+      ? `<button type="button" class="wc-dibs-release" data-dibs-action="release" data-dibs-target="${memberId}">Release</button>`
+      : "";
+    return `<span class="wc-dibs-wrap${open}"><button type="button" class="wc-dibs ${tone}" data-dibs-action="${action}" data-dibs-target="${memberId}" aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"${busy ? " disabled" : ""}>&#9995;</button><span class="wc-dibs-tip">${escapeHtml(label)}${release}</span></span>`;
+  }
+
+  function actionMarkup(item, view) {
+    const member = view.enemyRoster.find((candidate) => Number(candidate?.member_id || 0) === Number(item.memberId || 0));
     return `<div class="wc-item ${escapeHtml(item.severity)}">
       <div class="wc-item-text"><div class="wc-item-title">${escapeHtml(item.title)}</div><div class="wc-item-detail" title="${escapeHtml(item.detail)}">${escapeHtml(item.detail)}</div></div>
-      ${item.url ? `<a class="wc-link ${item.severity === "urgent" ? "primary" : ""}" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.actionLabel || "Open")}</a>` : ""}
+      <div class="wc-item-actions">${member ? dibsMarkup(member, view) : ""}${item.url ? `<a class="wc-link ${item.severity === "urgent" ? "primary" : ""}" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.actionLabel || "Open")}</a>` : ""}</div>
     </div>`;
   }
 
@@ -1088,6 +1197,7 @@
         memberId,
         name: String(member?.member_name || `Player ${memberId}`),
         current: true,
+        member,
       });
     }
     for (const memberId of selectedIds) {
@@ -1132,6 +1242,46 @@
     }
   }
 
+  function showDibsError(message) {
+    state.dibsError = String(message || "Dibs could not be updated");
+    if (state.dibsErrorTimer) clearTimeout(state.dibsErrorTimer);
+    state.dibsErrorTimer = setTimeout(() => {
+      state.dibsErrorTimer = 0;
+      state.dibsError = "";
+      scheduleRender();
+    }, 5_000);
+  }
+
+  async function updateDibs(action, targetMemberId) {
+    const memberId = Number(targetMemberId || 0);
+    if (state.dibsBusyTargetId || !Number.isSafeInteger(memberId) || memberId <= 0) return;
+    state.dibsBusyTargetId = memberId;
+    state.dibsError = "";
+    scheduleRender();
+    try {
+      const expiresAt = Date.parse(String(state.session?.wsSessionTokenExpiresAt || state.session?.expiresAt || ""));
+      if (!state.token || !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) await authenticate();
+      const factionId = String(state.session?.factionId || "");
+      if (!factionId || !state.token) throw new Error("Companion session is unavailable");
+      state.dibs = await requestJson({
+        method: "POST",
+        url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/dibs`),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${state.token}`,
+        },
+        data: JSON.stringify({ action, targetMemberId: memberId }),
+        label: "Dibs",
+      });
+      state.dibsInspectTargetId = action === "claim" ? memberId : 0;
+    } catch (error) {
+      showDibsError(error?.message || "Dibs could not be updated");
+    } finally {
+      state.dibsBusyTargetId = 0;
+      scheduleRender();
+    }
+  }
+
   function render() {
     state.renderQueued = false;
     if (state.dragging) return;
@@ -1168,7 +1318,7 @@
       : noWar
         ? `<div class="wc-empty">No active war.</div>`
         : view.actions.length
-          ? view.actions.map(actionMarkup).join("")
+          ? view.actions.map((item) => actionMarkup(item, view)).join("")
           : `<div class="wc-empty">No immediate actions.</div>`;
     const retaliationSection = view.retaliation.length
       ? `<div class="wc-section"><div class="wc-section-title"><span>Retaliations</span><span class="wc-count">${view.retaliation.length}</span></div>${view.retaliation.map(retaliationMarkup).join("")}</div>`
@@ -1187,7 +1337,7 @@
           const checked = targetIdSet.has(option.memberId);
           const disabled = !checked && targetIds.length >= MAX_WATCHED_TARGETS;
           const label = option.current ? option.name : `${option.name} (not in current roster)`;
-          return `<label class="wc-target-option" title="${escapeHtml(label)}"><input type="checkbox" data-target-id="${option.memberId}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}><span>${escapeHtml(label)}</span></label>`;
+          return `<div class="wc-target-option-row"><label class="wc-target-option" title="${escapeHtml(label)}"><input type="checkbox" data-target-id="${option.memberId}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}><span>${escapeHtml(label)}</span></label>${option.member ? dibsMarkup(option.member, view) : ""}</div>`;
         }).join("")}</div>`
       : `<div class="wc-empty">No current enemy roster.</div>`;
     const watchedTargetsSection = savedKey
@@ -1200,6 +1350,7 @@
     </div>
     <div class="wc-body">
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
+      ${state.dibsError ? `<div class="wc-error">${escapeHtml(state.dibsError)}</div>` : ""}
       ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key" value="${escapeHtml(state.keyDraft)}"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
       ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}` : ""}
       ${watchedTargetsSection}
@@ -1252,6 +1403,20 @@
       });
     });
     panel.querySelector('[data-action="save-targets"]')?.addEventListener("click", saveWatchedTargets);
+    panel.querySelectorAll('[data-dibs-action]').forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const memberId = Number(event.currentTarget?.dataset?.dibsTarget || 0);
+        const action = String(event.currentTarget?.dataset?.dibsAction || "");
+        if (action === "inspect") {
+          state.dibsInspectTargetId = state.dibsInspectTargetId === memberId ? 0 : memberId;
+          scheduleRender();
+          return;
+        }
+        if (action === "claim" || action === "release") updateDibs(action, memberId);
+      });
+    });
     const keyInput = panel.querySelector('[data-field="api-key"]');
     keyInput?.addEventListener("input", (event) => {
       state.keyDraft = String(event.currentTarget?.value || "");
@@ -1264,6 +1429,8 @@
       state.rosters.clear();
       state.scores.clear();
       state.retaliation = { attacks: [] };
+      state.dibs = { claims: [] };
+      state.dibsInspectTargetId = 0;
       closeSocket();
       state.phase = "connecting";
       if (resumeFallback) startFallbackPolling();
@@ -1284,6 +1451,8 @@
       state.scores.clear();
       state.settings = null;
       state.retaliation = { attacks: [] };
+      state.dibs = { claims: [] };
+      state.dibsInspectTargetId = 0;
       resetPersonalTargets();
       scheduleRender();
     });
@@ -1298,6 +1467,8 @@
     state.token = "";
     state.session = null;
     state.settings = null;
+    state.dibs = { claims: [] };
+    state.dibsInspectTargetId = 0;
     resetPersonalTargets();
     startTicker();
     ensureConnected();
@@ -1330,7 +1501,7 @@
 
   function syncPageActivation() {
     startPageObserver();
-    const active = core.isFactionPageUrl(window.location.href);
+    const active = core.isWarCompanionPageUrl(window.location.href);
     if (!active) {
       if (state.active || document.getElementById(PANEL_ID)) {
         stopTicker();
@@ -1348,9 +1519,9 @@
   }
 
   registerMenuCommand("Warbuddy: show panel", () => {
-    state.active = core.isFactionPageUrl(window.location.href);
+    state.active = core.isWarCompanionPageUrl(window.location.href);
     if (!state.active) {
-      window.alert(`Warbuddy v${SCRIPT_VERSION} is installed, but this is not recognized as a Torn faction page.\n\n${window.location.href}`);
+      window.alert(`Warbuddy v${SCRIPT_VERSION} is installed, but this is not a supported Torn faction or attack page.\n\n${window.location.href}`);
       return;
     }
     render();
@@ -1358,7 +1529,7 @@
   });
 
   registerMenuCommand("Warbuddy: diagnostics", () => {
-    const routeMatches = core.isFactionPageUrl(window.location.href);
+    const routeMatches = core.isWarCompanionPageUrl(window.location.href);
     const panel = document.getElementById(PANEL_ID);
     window.alert([
       `Warbuddy v${SCRIPT_VERSION}`,

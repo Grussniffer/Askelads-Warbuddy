@@ -267,6 +267,37 @@ describe("War Companion live state", () => {
       [2]
     );
   });
+
+  it("matches backend Dibs eligibility for hospital and Torn targets", () => {
+    const nowMs = 2_000_000_000_000;
+    assert.equal(core.dibsEligibility({
+      status: { userStatus: "Hospital", untill: nowMs + 5 * 60_000 },
+      location: { current: "Torn" },
+    }, nowMs).eligible, true);
+    assert.equal(core.dibsEligibility({
+      status: { userStatus: "Hospital", untill: nowMs + 5 * 60_000 + 1 },
+      location: { current: "Torn" },
+    }, nowMs).eligible, false);
+    assert.equal(core.dibsEligibility({
+      status: { userStatus: "Okay" },
+      location: { current: "Torn" },
+    }, nowMs).eligible, true);
+    assert.equal(core.dibsEligibility({
+      status: { userStatus: "Okay" },
+      location: { current: "Mexico" },
+    }, nowMs).eligible, false);
+  });
+
+  it("shows only an active Dibs claim for the requested target", () => {
+    const nowMs = 2_000_000_000_000;
+    const payload = { claims: [
+      { targetMemberId: 101, expiresAt: new Date(nowMs + 60_000).toISOString() },
+      { targetMemberId: 102, expiresAt: new Date(nowMs - 1).toISOString() },
+    ] };
+    assert.equal(core.activeDibsClaim(payload, 101, nowMs)?.targetMemberId, 101);
+    assert.equal(core.activeDibsClaim(payload, 102, nowMs), undefined);
+    assert.equal(core.activeDibsClaim(payload, 103, nowMs), undefined);
+  });
 });
 
 describe("War Companion panel state", () => {
@@ -282,14 +313,14 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes("nextTargetList.scrollTop = state.targetListScrollTop"));
     assert.ok(source.includes('nextTargetList.addEventListener("scroll"'));
     assert.ok(source.includes("state.privacyOpen = event.currentTarget.open"));
-    assert.ok(source.includes("core.isFactionPageUrl(window.location.href)"));
+    assert.ok(source.includes("core.isWarCompanionPageUrl(window.location.href)"));
   });
 
   it("keeps the API key field out of browser login autofill", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.21"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.22"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -355,6 +386,18 @@ describe("War Companion panel state", () => {
     assert.doesNotMatch(source, /faction-configured watched/i);
     assert.doesNotMatch(source, /Personal targets pinned near landing/i);
     assert.doesNotMatch(source, /wc-target-note/);
+  });
+
+  it("shares Dibs through the scoped companion session without extra Torn calls", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('"war_dibs"'));
+    assert.ok(source.includes('/war-companion/dibs'));
+    assert.ok(source.includes('JSON.stringify({ action, targetMemberId: memberId })'));
+    assert.ok(source.includes('data-dibs-action="claim"') || source.includes('const action = claim ? "inspect" : "claim"'));
+    assert.ok(source.includes('data-dibs-action="release"'));
+    assert.ok(source.includes('width:16px; height:16px'));
+    assert.doesNotMatch(source, /api\.torn\.com[^\n]*dibs/i);
   });
 
   it("does not start the one-second ticker before a key is submitted", async () => {
@@ -439,13 +482,19 @@ describe("War Companion route activation", () => {
     assert.equal(core.isFactionPageUrl("https://www.torn.com/factions.php?step=your#/tab=crimes"), true);
   });
 
-  it("stays inactive on Bazaar and non-faction pages", () => {
-    assert.equal(core.isFactionPageUrl("https://www.torn.com/bazaar.php"), false);
-    assert.equal(core.isFactionPageUrl("https://www.torn.com/page.php?sid=attack"), false);
-    assert.equal(core.isFactionPageUrl("https://example.com/factions.php#/war/rank"), false);
+  it("also runs on the exact Torn attack page", () => {
+    assert.equal(core.isWarCompanionPageUrl("https://www.torn.com/page.php?sid=attack"), true);
+    assert.equal(core.isWarCompanionPageUrl("https://torn.com/page.php?sid=attack&user2ID=123"), true);
+    assert.equal(core.attackPageTargetId("https://torn.com/page.php?sid=attack&user2ID=123"), 123);
   });
 
-  it("mounts and restores the panel on faction pages without mounting on Bazaar", async () => {
+  it("stays inactive on Bazaar and unrelated Torn pages", () => {
+    assert.equal(core.isWarCompanionPageUrl("https://www.torn.com/bazaar.php"), false);
+    assert.equal(core.isWarCompanionPageUrl("https://www.torn.com/page.php?sid=stocks"), false);
+    assert.equal(core.isWarCompanionPageUrl("https://example.com/factions.php#/war/rank"), false);
+  });
+
+  it("mounts and restores the panel on faction and attack pages without mounting elsewhere", async () => {
     const faction = await bootUserscript("https://www.torn.com/factions.php?step=your&type=1", { withBody: false });
     assert.equal(faction.elements.has("lads-war-companion"), false);
 
@@ -460,12 +509,19 @@ describe("War Companion route activation", () => {
 
     const bazaar = await bootUserscript("https://www.torn.com/bazaar.php");
     assert.equal(bazaar.elements.has("lads-war-companion"), false);
+
+    const attack = await bootUserscript("https://www.torn.com/page.php?sid=attack&user2ID=123");
+    assert.equal(attack.elements.has("lads-war-companion"), true);
+
+    const stocks = await bootUserscript("https://www.torn.com/page.php?sid=stocks");
+    assert.equal(stocks.elements.has("lads-war-companion"), false);
   });
 
-  it("injects only on Torn faction URLs", async () => {
+  it("injects only on Torn faction and page routes, with exact runtime activation", async () => {
     const header = await readFile(new URL("../userscript.header.txt", import.meta.url), "utf8");
     assert.match(header, /@sandbox\s+DOM/);
     assert.match(header, /@match\s+https:\/\/www\.torn\.com\/factions\.php\*/);
+    assert.match(header, /@include\s+https:\/\/www\.torn\.com\/page\.php\?\*sid=attack\*/);
     assert.doesNotMatch(header, /@match\s+https:\/\/www\.torn\.com\/\*/);
   });
 });

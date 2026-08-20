@@ -10,6 +10,7 @@
   const CHAIN_WINDOW_MS = 5 * 60 * 1000;
   const URGENT_CHAIN_MS = 2 * 60 * 1000;
   const WATCHED_TARGET_WINDOW_MS = 60 * 1000;
+  const DIBS_HOSPITAL_WINDOW_MS = 5 * 60 * 1000;
 
   const toTimestampMs = (value) => {
     const numeric = Number(value || 0);
@@ -48,6 +49,34 @@
     return /^\/factions(?:\.php)?(?:\/|$)/i.test(url.pathname);
   };
 
+  const attackPageTargetId = (value) => {
+    let url;
+    try {
+      url = new URL(String(value || ""), "https://www.torn.com/");
+    } catch {
+      return 0;
+    }
+    if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return 0;
+    if (!/^\/page\.php$/i.test(url.pathname) || String(url.searchParams.get("sid") || "").toLowerCase() !== "attack") {
+      return 0;
+    }
+    const memberId = Number(url.searchParams.get("user2ID") || url.searchParams.get("user2id") || 0);
+    return Number.isSafeInteger(memberId) && memberId > 0 ? memberId : 0;
+  };
+
+  const isWarCompanionPageUrl = (value) => {
+    if (isFactionPageUrl(value)) return true;
+    let url;
+    try {
+      url = new URL(String(value || ""), "https://www.torn.com/");
+    } catch {
+      return false;
+    }
+    return url.hostname.toLowerCase().replace(/^www\./, "") === "torn.com"
+      && /^\/page\.php$/i.test(url.pathname)
+      && String(url.searchParams.get("sid") || "").toLowerCase() === "attack";
+  };
+
   const memberStatus = (member) =>
     String(member?.status?.userStatus || member?.status?.state || member?.status?.status || "").toLowerCase();
 
@@ -64,6 +93,32 @@
       .map((memberId) => Number(memberId))
       .filter((memberId) => Number.isSafeInteger(memberId) && memberId > 0)
   );
+
+  const dibsEligibility = (member, nowMs = Date.now()) => {
+    const status = memberStatus(member);
+    if (!status) return { eligible: false, state: "unknown" };
+    if (status.includes("hospital")) {
+      const hospitalUntil = toTimestampMs(member?.status?.untill || member?.status?.until);
+      return {
+        eligible: hospitalUntil > nowMs && hospitalUntil - nowMs <= DIBS_HOSPITAL_WINDOW_MS,
+        state: "hospitalized",
+        hospitalUntil,
+      };
+    }
+    if (status === "okay" || status.startsWith("okay ") || status.startsWith("okay -")) {
+      const current = memberLocation(member);
+      const destination = memberDestination(member);
+      const available = (!current || current.includes("torn")) && (!destination || destination.includes("torn"));
+      return { eligible: available, state: available ? "available" : "unavailable" };
+    }
+    return { eligible: false, state: "unavailable" };
+  };
+
+  const activeDibsClaim = (payload, targetMemberId, nowMs = Date.now()) =>
+    (Array.isArray(payload?.claims) ? payload.claims : []).find((claim) => (
+      Number(claim?.targetMemberId || 0) === Number(targetMemberId || 0)
+      && toTimestampMs(claim?.expiresAt) > nowMs
+    ));
 
   const scoreForFaction = (scores, factionId) => {
     if (scores instanceof Map) return scores.get(String(factionId));
@@ -154,6 +209,7 @@
         activeWatchedIds.add(memberId);
         watchedActions.push({
           key: `watched-flight-${memberId}`,
+          memberId,
           severity: "urgent",
           title: `${member.member_name} lands in Torn`,
           detail: `${duration(remaining)} - watched - ${bsp}`,
@@ -168,6 +224,7 @@
         activeWatchedIds.add(memberId);
         watchedActions.push({
           key: `watched-hospital-${memberId}`,
+          memberId,
           severity: "urgent",
           title: `${member.member_name} leaves hospital`,
           detail: `${duration(remaining)} - watched - ${bsp}`,
@@ -182,6 +239,7 @@
         activeWatchedIds.add(memberId);
         watchedActions.push({
           key: `watched-ready-${memberId}`,
+          memberId,
           severity: "urgent",
           title: `${member.member_name} is attackable now`,
           detail: `Watched target - ${bsp}`,
@@ -200,6 +258,7 @@
       if (remaining <= 0 || remaining > HOSPITAL_WINDOW_MS) continue;
       result.push({
         key: `hospital-${member.member_id}`,
+        memberId: Number(member.member_id || 0),
         severity: remaining <= URGENT_HOSPITAL_MS ? "urgent" : "watch",
         title: `${member.member_name} leaves hospital`,
         detail: `${duration(remaining)} - ${member.bsp ? `${formatBsp(member.bsp)} BSP` : "BSP unknown"}`,
@@ -220,6 +279,7 @@
     for (const member of onlineTargets) {
       result.push({
         key: `online-${member.member_id}`,
+        memberId: Number(member.member_id || 0),
         severity: "info",
         title: `${member.member_name} is online in Torn`,
         detail: member.bsp ? `${formatBsp(member.bsp)} BSP` : `Level ${member.level || "?"} - BSP unknown`,
@@ -243,14 +303,18 @@
       .sort((a, b) => Number(a.expiresAt || 0) - Number(b.expiresAt || 0));
 
   return {
+    activeDibsClaim,
     activeRetaliations,
+    attackPageTargetId,
     applyRosterUpdate,
     attackUrl,
     buildActionQueue,
+    dibsEligibility,
     duration,
     formatBsp,
     inferEnemyFactionId,
     isFactionPageUrl,
+    isWarCompanionPageUrl,
     scoreForFaction,
     toTimestampMs,
   };
