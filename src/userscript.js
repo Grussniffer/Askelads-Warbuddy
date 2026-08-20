@@ -5,14 +5,14 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.15";
+  const SCRIPT_VERSION = "0.1.16";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
   const POSITION_STORAGE = "lads_war_companion_position";
   const REQUEST_TIMEOUT_MS = 30_000;
   const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
-  const FALLBACK_POLL_MS = 10_000;
+  const FALLBACK_POLL_MS = 5_000;
   const FALLBACK_SOCKET_RETRY_MS = 60_000;
   const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function";
   const PANEL_EDGE_GAP = 8;

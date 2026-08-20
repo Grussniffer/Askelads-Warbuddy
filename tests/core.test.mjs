@@ -285,7 +285,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.15"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.16"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -385,7 +385,7 @@ describe("War Companion panel state", () => {
   it("falls back to a scoped HTTP snapshot when native WebSockets are rejected", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
-    assert.ok(source.includes("const FALLBACK_POLL_MS = 10_000"));
+    assert.ok(source.includes("const FALLBACK_POLL_MS = 5_000"));
     assert.ok(source.includes("const FALLBACK_SOCKET_RETRY_MS = 60_000"));
     assert.ok(source.includes("/war-companion/snapshot?timestamp="));
     assert.ok(source.includes("headers: { Authorization: `Bearer ${state.token}` }"));
