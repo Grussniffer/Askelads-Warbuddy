@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { describe, it } from "node:test";
 
@@ -96,5 +97,17 @@ describe("War Companion live state", () => {
       ] }, 100).map((attack) => attack.attackerId),
       [2]
     );
+  });
+});
+
+describe("War Companion panel state", () => {
+  it("preserves the Privacy disclosure and panel scroll position across live renders", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes("privacyOpen: false"));
+    assert.ok(source.includes('if (privacyDisclosure) state.privacyOpen = privacyDisclosure.open'));
+    assert.ok(source.includes('data-section="privacy"${state.privacyOpen ? " open" : ""}'));
+    assert.ok(source.includes("if (nextBody) nextBody.scrollTop = bodyScrollTop"));
+    assert.ok(source.includes("state.privacyOpen = event.currentTarget.open"));
   });
 });

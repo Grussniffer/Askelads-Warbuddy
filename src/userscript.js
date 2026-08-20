@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.0";
+  const SCRIPT_VERSION = "0.1.1";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -44,6 +44,7 @@
     retaliation: { attacks: [] },
     nowMs: Date.now(),
     collapsed: String(storage.get(COLLAPSED_STORAGE, "")) === "1",
+    privacyOpen: false,
     renderQueued: false,
   };
 
@@ -425,6 +426,10 @@
       panel.id = PANEL_ID;
       document.body.appendChild(panel);
     }
+    const currentBody = panel.querySelector(".wc-body");
+    const bodyScrollTop = Number(currentBody?.scrollTop || 0);
+    const privacyDisclosure = panel.querySelector('[data-section="privacy"]');
+    if (privacyDisclosure) state.privacyOpen = privacyDisclosure.open;
     panel.classList.toggle("wc-collapsed", state.collapsed);
     const status = statusView();
     const view = sessionView();
@@ -451,8 +456,14 @@
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
       ${savedKey ? "" : `<div class="wc-row"><input class="wc-input" data-field="api-key" type="password" autocomplete="off" placeholder="Torn API key"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
       ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}<div class="wc-row"><button class="wc-button primary" data-action="refresh">Refresh</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}
-      <details><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it only to verify your profile and faction; the companion session is read-only.</div></details>
+      <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it only to verify your profile and faction; the companion session is read-only.</div></details>
     </div>`;
+
+    const nextBody = panel.querySelector(".wc-body");
+    if (nextBody) nextBody.scrollTop = bodyScrollTop;
+    panel.querySelector('[data-section="privacy"]')?.addEventListener("toggle", (event) => {
+      state.privacyOpen = event.currentTarget.open;
+    });
 
     panel.querySelector('[data-action="collapse"]')?.addEventListener("click", () => {
       state.collapsed = !state.collapsed;

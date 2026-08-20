@@ -46,3 +46,14 @@ Source files:
 - `userscript.header.txt` contains the userscript metadata.
 
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
+
+## Releases
+
+### 0.1.1 - 20 August 2026
+
+- Privacy now stays open while the live one-second countdown refreshes the panel.
+- The panel keeps its scroll position across live updates.
+
+### 0.1.0 - 20 August 2026
+
+- Initial standalone release with the action queue and live retaliation opportunities.
