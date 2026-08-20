@@ -49,6 +49,11 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.10 - 20 August 2026
+
+- Warbuddy now requests Tampermonkey's isolated DOM sandbox instead of its default raw page context.
+- The live WebSocket therefore bypasses Torn's page CSP and uses the gateway's restricted extension-origin path.
+
 ### 0.1.9 - 20 August 2026
 
 - Tampermonkey extension-origin sockets now use the backend's restricted, signed Warbuddy session path.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.9
+// @version      0.1.10
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -11,6 +11,7 @@
 // @match        https://www.torn.com/factions.php*
 // @match        https://torn.com/factions.php*
 // @run-at       document-idle
+// @sandbox      DOM
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue

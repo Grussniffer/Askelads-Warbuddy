@@ -193,7 +193,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.9"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.10"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -276,6 +276,7 @@ describe("War Companion route activation", () => {
 
   it("injects only on Torn faction URLs", async () => {
     const header = await readFile(new URL("../userscript.header.txt", import.meta.url), "utf8");
+    assert.match(header, /@sandbox\s+DOM/);
     assert.match(header, /@match\s+https:\/\/www\.torn\.com\/factions\.php\*/);
     assert.doesNotMatch(header, /@match\s+https:\/\/www\.torn\.com\/\*/);
   });
