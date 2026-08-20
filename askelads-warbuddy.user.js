@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.10
+// @version      0.1.11
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -210,13 +210,15 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.10";
+  const SCRIPT_VERSION = "0.1.11";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
   const POSITION_STORAGE = "lads_war_companion_position";
   const REQUEST_TIMEOUT_MS = 30_000;
   const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
+  const FALLBACK_POLL_MS = 10_000;
+  const FALLBACK_SOCKET_RETRY_MS = 60_000;
   const PANEL_EDGE_GAP = 8;
   const TOPICS = ["war_tracker_settings", "war_tracker", "score", "retaliation"];
 
@@ -244,6 +246,12 @@
     socketConnectTimer: 0,
     reconnectTimer: 0,
     reconnectAttempt: 0,
+    fallbackTimer: 0,
+    fallbackInFlight: false,
+    fallbackActive: false,
+    fallbackGeneration: 0,
+    lastFallbackAt: "",
+    lastFallbackError: "",
     ticker: 0,
     routeTimer: 0,
     pageObserver: null,
@@ -391,6 +399,9 @@
     && (typeof navigator === "undefined" || navigator.onLine !== false);
   const backendUrl = (path) => `${BACKEND_BASE_URL.replace(/\/$/, "")}${path}`;
   const socketUrl = () => `${BACKEND_BASE_URL.replace(/^http/i, "ws").replace(/\/$/, "")}/ws`;
+  const fallbackIsFresh = () => state.fallbackActive
+    && Number.isFinite(Date.parse(state.lastFallbackAt))
+    && Date.parse(state.lastFallbackAt) > Date.now() - (FALLBACK_POLL_MS * 3);
 
   function getStoredPanelPosition() {
     const raw = storage.get(POSITION_STORAGE, "");
@@ -554,6 +565,7 @@
   function closeSocket() {
     clearTimeout(state.reconnectTimer);
     state.reconnectTimer = 0;
+    stopFallbackPolling();
     clearSocketConnectTimer();
     const socket = state.socket;
     state.socket = null;
@@ -571,15 +583,23 @@
       reason,
       at: new Date().toISOString(),
     };
-    state.error = message;
-    state.phase = isForeground() ? "connecting" : "paused";
+    if (fallbackIsFresh()) {
+      state.error = "";
+      state.phase = "fallback";
+    } else {
+      state.error = message;
+      state.phase = isForeground() ? "connecting" : "paused";
+    }
     try {
       if (socket.readyState < WebSocket.CLOSING) socket.close(4000, reason);
     } catch {
       // A rejected browser handshake may discard the socket before close() runs.
     }
     scheduleRender();
-    if (isForeground()) scheduleReconnect();
+    if (isForeground()) {
+      startFallbackPolling();
+      scheduleReconnect();
+    }
   }
 
   function subscribeTopics(socket) {
@@ -595,7 +615,10 @@
 
   function requestRosterSnapshot() {
     const socket = state.socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      if (state.fallbackActive) pollFallbackSnapshot();
+      return;
+    }
     socket.send(JSON.stringify({ type: "unsubscribe", id: `wc-reset-${Date.now()}`, topic: "war_tracker", payload: { wsSessionToken: state.token } }));
     setTimeout(() => {
       if (socket !== state.socket || socket.readyState !== WebSocket.OPEN) return;
@@ -624,6 +647,94 @@
     scheduleRender();
   }
 
+  function applyFallbackSnapshot(snapshot) {
+    state.settings = snapshot?.settings || null;
+    const rosters = new Map();
+    for (const payload of Array.isArray(snapshot?.rosters) ? snapshot.rosters : []) {
+      const factionId = String(payload?.factionId || payload?.faction_id || "");
+      if (!factionId) continue;
+      rosters.set(factionId, core.applyRosterUpdate(undefined, payload));
+    }
+    const scores = new Map();
+    for (const score of Array.isArray(snapshot?.scores) ? snapshot.scores : []) {
+      const factionId = String(score?.factionId || score?.faction_id || "");
+      if (factionId) scores.set(factionId, score);
+    }
+    state.rosters = rosters;
+    state.scores = scores;
+    state.retaliation = snapshot?.retaliation || { attacks: [] };
+    scheduleRender();
+  }
+
+  function clearFallbackTimer() {
+    if (state.fallbackTimer) clearTimeout(state.fallbackTimer);
+    state.fallbackTimer = 0;
+  }
+
+  function stopFallbackPolling() {
+    clearFallbackTimer();
+    state.fallbackGeneration += 1;
+    state.fallbackActive = false;
+    state.fallbackInFlight = false;
+  }
+
+  function scheduleFallbackPoll() {
+    clearFallbackTimer();
+    if (!state.fallbackActive || !isForeground()) return;
+    state.fallbackTimer = setTimeout(() => {
+      state.fallbackTimer = 0;
+      pollFallbackSnapshot();
+    }, FALLBACK_POLL_MS);
+  }
+
+  function startFallbackPolling() {
+    if (!state.session || !state.token || !isForeground()) return;
+    state.fallbackActive = true;
+    pollFallbackSnapshot();
+  }
+
+  async function pollFallbackSnapshot() {
+    if (!state.fallbackActive || state.fallbackInFlight || !isForeground()) return;
+    const generation = state.fallbackGeneration;
+    state.fallbackInFlight = true;
+    clearFallbackTimer();
+    try {
+      const expiresAt = Date.parse(String(state.session?.wsSessionTokenExpiresAt || state.session?.expiresAt || ""));
+      if (!state.token || !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) {
+        await authenticate();
+      }
+      const factionId = String(state.session?.factionId || "");
+      if (!factionId || !state.token) throw new Error("Companion session is unavailable");
+      const snapshot = await requestJson({
+        method: "GET",
+        url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/snapshot?timestamp=${Date.now()}`),
+        headers: { Authorization: `Bearer ${state.token}` },
+        label: "War Companion snapshot",
+      });
+      if (generation !== state.fallbackGeneration || !state.fallbackActive || !isForeground()) return;
+      applyFallbackSnapshot(snapshot);
+      state.phase = "fallback";
+      state.error = "";
+      state.lastFallbackAt = new Date().toISOString();
+      state.lastFallbackError = "";
+    } catch (error) {
+      if (generation !== state.fallbackGeneration || !state.fallbackActive) return;
+      state.lastFallbackError = String(error?.message || "Fallback update failed");
+      if (fallbackIsFresh()) {
+        state.phase = "fallback";
+        state.error = "";
+      } else if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+        state.phase = "connecting";
+        state.error = `Live connection and compatible fallback failed: ${state.lastFallbackError}`;
+      }
+      scheduleRender();
+    } finally {
+      if (generation !== state.fallbackGeneration) return;
+      state.fallbackInFlight = false;
+      scheduleFallbackPoll();
+    }
+  }
+
   function handleSocketMessage(event) {
     let message;
     try { message = JSON.parse(String(event.data || "")); }
@@ -639,7 +750,9 @@
 
   function scheduleReconnect() {
     if (!isForeground() || state.reconnectTimer) return;
-    const delay = Math.min(20_000, 1_000 * 2 ** Math.min(state.reconnectAttempt, 4));
+    const delay = state.fallbackActive
+      ? FALLBACK_SOCKET_RETRY_MS
+      : Math.min(20_000, 1_000 * 2 ** Math.min(state.reconnectAttempt, 4));
     state.reconnectAttempt += 1;
     state.reconnectTimer = setTimeout(() => {
       state.reconnectTimer = 0;
@@ -654,8 +767,10 @@
       const expiresAt = Date.parse(String(state.session?.wsSessionTokenExpiresAt || state.session?.expiresAt || ""));
       if (!state.token || !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) await authenticate();
       if (!isForeground()) return;
-      state.phase = "connecting";
-      scheduleRender();
+      if (!fallbackIsFresh()) {
+        state.phase = "connecting";
+        scheduleRender();
+      }
       const socket = new window.WebSocket(socketUrl());
       state.socket = socket;
       clearSocketConnectTimer();
@@ -672,6 +787,7 @@
       socket.addEventListener("open", () => {
         if (socket !== state.socket) return;
         clearSocketConnectTimer();
+        stopFallbackPolling();
         state.phase = "connected";
         state.reconnectAttempt = 0;
         state.error = "";
@@ -715,12 +831,18 @@
         } else if (state.reconnectAttempt >= 2) {
           state.error = `Live connection interrupted (code ${event.code || 1006}). Retrying automatically.`;
         }
-        state.phase = "connecting";
+        state.phase = fallbackIsFresh() ? "fallback" : "connecting";
+        if (state.token && state.session) startFallbackPolling();
         scheduleRender();
         scheduleReconnect();
       });
     } catch (error) {
-      if (!state.error) state.error = String(error?.message || "Could not start the live connection");
+      if (fallbackIsFresh()) {
+        state.phase = "fallback";
+        state.error = "";
+      } else if (!state.error) {
+        state.error = String(error?.message || "Could not start the live connection");
+      }
       scheduleRender();
       scheduleReconnect();
     }
@@ -776,6 +898,7 @@
   const statusView = () => {
     if (!getStoredKey()) return { label: "API key needed", tone: "" };
     if (state.phase === "connected") return { label: "Live", tone: "live" };
+    if (state.phase === "fallback") return { label: "Live (compatible)", tone: "live" };
     if (state.phase === "paused") return { label: "Paused while hidden", tone: "" };
     if (state.phase === "error") return { label: "Connection error", tone: "wait" };
     if (state.phase === "authenticating") return { label: "Checking key", tone: "wait" };
@@ -822,7 +945,9 @@
     const view = sessionView();
     const savedKey = getStoredKey();
     const trackerDisabled = state.settings?.enabled === false;
-    const noWar = state.phase === "connected" && !trackerDisabled && !view.enemyFactionId;
+    const noWar = (state.phase === "connected" || state.phase === "fallback")
+      && !trackerDisabled
+      && !view.enemyFactionId;
     const queueMarkup = trackerDisabled
       ? `<div class="wc-empty">War tracker is disabled.</div>`
       : noWar
@@ -864,11 +989,13 @@
       if (event.key === "Enter") connectFromInput();
     });
     panel.querySelector('[data-action="refresh"]')?.addEventListener("click", () => {
+      const resumeFallback = state.fallbackActive;
       state.rosters.clear();
       state.scores.clear();
       state.retaliation = { attacks: [] };
       closeSocket();
       state.phase = "connecting";
+      if (resumeFallback) startFallbackPolling();
       setTimeout(ensureConnected, 50);
       scheduleRender();
     });
@@ -964,9 +1091,12 @@
       `Page visibility: ${document.visibilityState}`,
       `Browser online: ${typeof navigator === "undefined" || navigator.onLine !== false ? "yes" : "no"}`,
       `WebSocket state: ${state.socket?.readyState ?? "none"}`,
+      `Transport: ${state.phase === "fallback" ? "compatible HTTP fallback" : "WebSocket"}`,
       `Connect watchdog: ${state.socketConnectTimer ? "armed" : "idle"}`,
       `Last socket error: ${state.lastSocketErrorAt || "none"}`,
       `Last close: ${state.lastSocketClose ? `${state.lastSocketClose.code}${state.lastSocketClose.reason ? ` (${state.lastSocketClose.reason})` : ""} at ${state.lastSocketClose.at}` : "none"}`,
+      `Last fallback update: ${state.lastFallbackAt || "none"}`,
+      `Last fallback error: ${state.lastFallbackError || "none"}`,
       `Endpoint: ${socketUrl()}`,
       window.location.href,
     ].join("\n"));

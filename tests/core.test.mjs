@@ -193,7 +193,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.10"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.11"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -234,6 +234,18 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes('"Live connection was rejected. Retrying automatically."'));
     assert.ok(source.includes("recoverFailedSocket("));
     assert.ok(source.includes("scheduleReconnect();"));
+  });
+
+  it("falls back to a scoped HTTP snapshot when native WebSockets are rejected", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes("const FALLBACK_POLL_MS = 10_000"));
+    assert.ok(source.includes("const FALLBACK_SOCKET_RETRY_MS = 60_000"));
+    assert.ok(source.includes("/war-companion/snapshot?timestamp="));
+    assert.ok(source.includes("headers: { Authorization: `Bearer ${state.token}` }"));
+    assert.ok(source.includes("startFallbackPolling();"));
+    assert.ok(source.includes('if (state.phase === "fallback") return { label: "Live (compatible)", tone: "live" };'));
+    assert.doesNotMatch(source, /war-companion\/snapshot[^\n]*tornApiKey/);
   });
 
   it("ignores delayed close events from sockets that were already replaced", async () => {

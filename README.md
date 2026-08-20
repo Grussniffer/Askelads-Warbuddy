@@ -26,7 +26,8 @@ Warbuddy displays information and links only. It does not attack, click, submit,
 - The key is used to identify the player and faction, then exchanged for a six-hour, faction-scoped, read-only companion session.
 - The key is not saved to the backend during that exchange.
 - Warbuddy connects only while a Torn faction tab is visible and the device is online.
-- Its backend session can subscribe only to War Tracker settings, rosters, score, and retaliation for the verified faction.
+- Its backend session can read only War Tracker settings, rosters, score, and retaliation for the verified faction.
+- WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached read-only snapshot without making extra Torn API calls.
 
 If the earlier **Lads War Companion** script is installed, remove or disable it before installing Warbuddy so two copies do not run on the same Torn page.
 
@@ -48,6 +49,12 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.11 - 20 August 2026
+
+- A compatible HTTP snapshot now takes over automatically when Torn, Chrome, or a userscript environment rejects the native WebSocket.
+- The fallback reads the same faction-scoped in-memory state as the socket and never sends the stored Torn key.
+- Fallback requests pause with the tab, share a short gateway cache, and keep retrying the faster WebSocket in the background.
 
 ### 0.1.10 - 20 August 2026
 

@@ -1,6 +1,6 @@
 {
   "name": "askelads-warbuddy",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "description": "Read-only Torn war action queue and retaliation userscript.",
   "scripts": {
