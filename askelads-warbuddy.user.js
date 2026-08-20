@@ -1,20 +1,21 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.4
+// @version      0.1.5
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
 // @supportURL   https://github.com/Grussniffer/Askelads-Warbuddy/issues
 // @downloadURL  https://raw.githubusercontent.com/Grussniffer/Askelads-Warbuddy/main/askelads-warbuddy.user.js
 // @updateURL    https://raw.githubusercontent.com/Grussniffer/Askelads-Warbuddy/main/askelads-warbuddy.meta.js
-// @match        https://www.torn.com/*
-// @match        https://torn.com/*
+// @match        https://www.torn.com/factions.php*
+// @match        https://torn.com/factions.php*
 // @run-at       document-idle
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
 // @grant        GM_xmlhttpRequest
 // @connect      api.torn.com
 // @connect      backend.grusmedia.no
@@ -208,7 +209,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.4";
+  const SCRIPT_VERSION = "0.1.5";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -241,6 +242,8 @@
     reconnectAttempt: 0,
     ticker: 0,
     routeTimer: 0,
+    pageObserver: null,
+    observedBody: null,
     authPromise: null,
     rosters: new Map(),
     scores: new Map(),
@@ -269,8 +272,12 @@
     }
   };
 
+  const registerMenuCommand = (name, callback) => {
+    if (typeof GM_registerMenuCommand === "function") GM_registerMenuCommand(name, callback);
+  };
+
   addStyle(`
-    #${PANEL_ID} { position:fixed; right:10px; bottom:10px; z-index:999999; width:min(320px,calc(100vw - 20px)); max-height:min(70vh,620px); overflow:hidden; border:1px solid #3f3f46; border-radius:7px; background:#111113; color:#f4f4f5; box-shadow:0 12px 32px rgba(0,0,0,.55); font:12px/1.35 Arial,Helvetica,sans-serif; }
+    #${PANEL_ID} { display:block !important; visibility:visible !important; opacity:1 !important; position:fixed !important; right:10px !important; bottom:10px !important; z-index:2147483647 !important; width:min(320px,calc(100vw - 20px)); max-height:min(70vh,620px); overflow:hidden; border:1px solid #3f3f46; border-radius:7px; background:#111113; color:#f4f4f5; box-shadow:0 12px 32px rgba(0,0,0,.55); font:12px/1.35 Arial,Helvetica,sans-serif; }
     #${PANEL_ID} * { box-sizing:border-box; letter-spacing:0; }
     #${PANEL_ID}.wc-collapsed .wc-body { display:none; }
     #${PANEL_ID} .wc-header { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; padding:6px 8px; border-bottom:1px solid #27272a; background:#18181b; }
@@ -629,7 +636,7 @@
 
   function render() {
     state.renderQueued = false;
-    const mount = document.body || document.documentElement;
+    const mount = document.body;
     if (!mount) return;
     if (!state.active) {
       document.getElementById(PANEL_ID)?.remove();
@@ -637,7 +644,7 @@
     }
     let panel = document.getElementById(PANEL_ID);
     if (!panel) {
-      panel = document.createElement("section");
+      panel = document.createElement("div");
       panel.id = PANEL_ID;
       mount.appendChild(panel);
     }
@@ -731,12 +738,25 @@
   }
 
   function start() {
+    startPageObserver();
     syncPageActivation();
     syncForegroundState();
     if (!state.routeTimer) state.routeTimer = setInterval(syncPageActivation, 1_000);
   }
 
+  function startPageObserver() {
+    if (typeof MutationObserver !== "function" || !document.body) return;
+    if (state.pageObserver && state.observedBody === document.body) return;
+    state.pageObserver?.disconnect();
+    state.observedBody = document.body;
+    state.pageObserver = new MutationObserver(() => {
+      if (state.active && !document.getElementById(PANEL_ID)) render();
+    });
+    state.pageObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
   function syncPageActivation() {
+    startPageObserver();
     const active = core.isFactionPageUrl(window.location.href);
     if (!active) {
       if (state.active || document.getElementById(PANEL_ID)) {
@@ -754,6 +774,29 @@
     if (becameActive) syncForegroundState();
   }
 
+  registerMenuCommand("Warbuddy: show panel", () => {
+    state.active = core.isFactionPageUrl(window.location.href);
+    if (!state.active) {
+      window.alert(`Warbuddy v${SCRIPT_VERSION} is installed, but this is not recognized as a Torn faction page.\n\n${window.location.href}`);
+      return;
+    }
+    render();
+    syncForegroundState();
+  });
+
+  registerMenuCommand("Warbuddy: diagnostics", () => {
+    const routeMatches = core.isFactionPageUrl(window.location.href);
+    const panel = document.getElementById(PANEL_ID);
+    window.alert([
+      `Warbuddy v${SCRIPT_VERSION}`,
+      `Route matched: ${routeMatches ? "yes" : "no"}`,
+      `Document body: ${document.body ? "ready" : "missing"}`,
+      `Panel mounted: ${panel ? "yes" : "no"}`,
+      `Panel visible: ${panel ? getComputedStyle(panel).display !== "none" && getComputedStyle(panel).visibility !== "hidden" : "n/a"}`,
+      window.location.href,
+    ].join("\n"));
+  });
+
   document.addEventListener("visibilitychange", syncForegroundState);
   window.addEventListener("focus", syncForegroundState);
   window.addEventListener("blur", syncForegroundState);
@@ -766,6 +809,9 @@
     stopTicker();
     closeSocket();
     state.active = false;
+    state.pageObserver?.disconnect();
+    state.pageObserver = null;
+    state.observedBody = null;
   });
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });

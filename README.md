@@ -49,6 +49,13 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.5 - 20 August 2026
+
+- Warbuddy now uses the same body-mounted `div` and DOM-observer lifecycle pattern as the OC userscript.
+- Torn faction styles can no longer hide the panel, and Torn DOM rebuilds restore it immediately.
+- Tampermonkey now provides **Warbuddy: show panel** and **Warbuddy: diagnostics** menu commands for direct runtime checks.
+- Script injection is limited to Torn faction URLs instead of every Torn page.
+
 ### 0.1.4 - 20 August 2026
 
 - Warbuddy now remounts itself if Torn replaces the faction page shell or removes the panel.

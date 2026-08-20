@@ -10,6 +10,9 @@ const core = require("../src/core.cjs");
 const bootUserscript = async (href, { withBody = true } = {}) => {
   const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
   const elements = new Map();
+  const documentListeners = new Map();
+  const menuCommands = new Map();
+  let observerCallback = null;
   const mount = {
     appendChild(element) {
       element.parentNode = this;
@@ -20,15 +23,16 @@ const bootUserscript = async (href, { withBody = true } = {}) => {
     body: withBody ? mount : null,
     documentElement: mount,
     head: mount,
-    readyState: "complete",
+    readyState: withBody ? "complete" : "loading",
     visibilityState: "hidden",
     hasFocus: () => false,
-    addEventListener() {},
+    addEventListener(name, callback) { documentListeners.set(name, callback); },
     querySelector: () => null,
     getElementById: (id) => elements.get(id) || null,
-    createElement() {
+    createElement(tagName) {
       return {
         id: "",
+        tagName: String(tagName || "").toUpperCase(),
         parentNode: null,
         classList: { toggle() {} },
         addEventListener() {},
@@ -49,6 +53,14 @@ const bootUserscript = async (href, { withBody = true } = {}) => {
     GM_getValue: (_key, fallback) => fallback,
     GM_setValue() {},
     GM_deleteValue() {},
+    GM_registerMenuCommand(name, callback) { menuCommands.set(name, callback); },
+    MutationObserver: class {
+      constructor(callback) { observerCallback = callback; }
+      observe() {}
+      disconnect() {}
+    },
+    getComputedStyle: () => ({ display: "block", visibility: "visible" }),
+    alert() {},
     requestAnimationFrame: (callback) => callback(),
     setInterval(callback) { routeCheck = callback; return 1; },
     clearInterval() {},
@@ -58,7 +70,17 @@ const bootUserscript = async (href, { withBody = true } = {}) => {
   };
   context.window = context;
   runInNewContext(source, context);
-  return { elements, routeCheck: () => routeCheck?.() };
+  return {
+    elements,
+    menuCommands,
+    routeCheck: () => routeCheck?.(),
+    notifyMutation: () => observerCallback?.([]),
+    activateBody() {
+      document.body = mount;
+      document.readyState = "complete";
+      documentListeners.get("DOMContentLoaded")?.();
+    },
+  };
 };
 
 describe("War Companion action queue", () => {
@@ -183,13 +205,24 @@ describe("War Companion route activation", () => {
 
   it("mounts and restores the panel on faction pages without mounting on Bazaar", async () => {
     const faction = await bootUserscript("https://www.torn.com/factions.php?step=your&type=1", { withBody: false });
+    assert.equal(faction.elements.has("lads-war-companion"), false);
+
+    faction.activateBody();
     assert.equal(faction.elements.has("lads-war-companion"), true);
+    assert.equal(faction.elements.get("lads-war-companion").tagName, "DIV");
+    assert.equal(faction.menuCommands.has("Warbuddy: diagnostics"), true);
 
     faction.elements.get("lads-war-companion").remove();
-    faction.routeCheck();
+    faction.notifyMutation();
     assert.equal(faction.elements.has("lads-war-companion"), true);
 
     const bazaar = await bootUserscript("https://www.torn.com/bazaar.php");
     assert.equal(bazaar.elements.has("lads-war-companion"), false);
+  });
+
+  it("injects only on Torn faction URLs", async () => {
+    const header = await readFile(new URL("../userscript.header.txt", import.meta.url), "utf8");
+    assert.match(header, /@match\s+https:\/\/www\.torn\.com\/factions\.php\*/);
+    assert.doesNotMatch(header, /@match\s+https:\/\/www\.torn\.com\/\*/);
   });
 });
