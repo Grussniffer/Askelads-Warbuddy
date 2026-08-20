@@ -289,7 +289,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.20"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.21"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -353,6 +353,8 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes('JSON.stringify({ memberIds: normalizeTargetIds(state.targetDraft) })'));
     assert.ok(source.includes('save only your watched-target list'));
     assert.doesNotMatch(source, /faction-configured watched/i);
+    assert.doesNotMatch(source, /Personal targets pinned near landing/i);
+    assert.doesNotMatch(source, /wc-target-note/);
   });
 
   it("does not start the one-second ticker before a key is submitted", async () => {

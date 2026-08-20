@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.20
+// @version      0.1.21
 // @description  Shows a war action queue, personal watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -288,7 +288,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.20";
+  const SCRIPT_VERSION = "0.1.21";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -421,7 +421,6 @@
     #${PANEL_ID} details { margin-top:6px; border:1px solid #27272a; border-radius:5px; color:#a1a1aa; }
     #${PANEL_ID} summary { cursor:pointer; padding:5px 6px; color:#d4d4d8; font-weight:700; }
     #${PANEL_ID} .wc-summary-count { float:right; color:#a1a1aa; font-size:10px; font-weight:400; }
-    #${PANEL_ID} .wc-target-note { padding:0 6px 5px; color:#a1a1aa; font-size:10px; }
     #${PANEL_ID} .wc-target-list { max-height:180px; overflow:auto; border-top:1px solid #27272a; }
     #${PANEL_ID} .wc-target-option { display:flex; align-items:center; gap:6px; min-height:30px; padding:4px 6px; border-top:1px solid #27272a; color:#e4e4e7; cursor:pointer; }
     #${PANEL_ID} .wc-target-option:first-child { border-top:0; }
@@ -1192,7 +1191,7 @@
         }).join("")}</div>`
       : `<div class="wc-empty">No current enemy roster.</div>`;
     const watchedTargetsSection = savedKey
-      ? `<details data-section="targets"${state.targetsOpen ? " open" : ""}><summary>Watched targets <span class="wc-summary-count">${targetIds.length}/${MAX_WATCHED_TARGETS}</span></summary><div class="wc-target-note">Personal targets pinned near landing, hospital release, and while attackable.</div>${targetOptionsMarkup}<div class="wc-target-actions">${state.targetError ? `<span class="wc-target-error">${escapeHtml(state.targetError)}</span>` : ""}<button class="wc-button primary" data-action="save-targets"${!state.targetsDirty || state.targetsSaving ? " disabled" : ""}>${state.targetsSaving ? "Saving" : "Save"}</button></div></details>`
+      ? `<details data-section="targets"${state.targetsOpen ? " open" : ""}><summary>Watched targets <span class="wc-summary-count">${targetIds.length}/${MAX_WATCHED_TARGETS}</span></summary>${targetOptionsMarkup}<div class="wc-target-actions">${state.targetError ? `<span class="wc-target-error">${escapeHtml(state.targetError)}</span>` : ""}<button class="wc-button primary" data-action="save-targets"${!state.targetsDirty || state.targetsSaving ? " disabled" : ""}>${state.targetsSaving ? "Saving" : "Save"}</button></div></details>`
       : "";
 
     panel.innerHTML = `<div class="wc-header">

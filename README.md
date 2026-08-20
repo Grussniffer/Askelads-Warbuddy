@@ -1,10 +1,9 @@
 # Askelads Warbuddy
 
-## 0.1.20
+## 0.1.21
 
-- Keeps the watched-target list at the user's current position during live updates.
-- Prevents the one-second ticker and incoming snapshots from jumping the list back to the top.
-- Keeps the main panel and watched-target list scroll positions independent.
+- Removes the explanatory copy from the watched-target picker.
+- Keeps only the target count, member choices, errors, and Save action visible.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -58,6 +57,11 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.21 - 20 August 2026
+
+- Removes the informational sentence from the watched-target picker.
+- Leaves target selection and live behavior unchanged.
 
 ### 0.1.20 - 20 August 2026
 
