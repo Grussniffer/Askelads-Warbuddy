@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.11
+// @version      0.1.12
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -210,7 +210,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.11";
+  const SCRIPT_VERSION = "0.1.12";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -252,6 +252,7 @@
     fallbackGeneration: 0,
     lastFallbackAt: "",
     lastFallbackError: "",
+    keyDraft: "",
     ticker: 0,
     routeTimer: 0,
     pageObserver: null,
@@ -868,7 +869,8 @@
       return;
     }
     if (isForeground()) {
-      startTicker();
+      if (getStoredKey()) startTicker();
+      else stopTicker();
       ensureConnected();
       return;
     }
@@ -966,7 +968,7 @@
     <div class="wc-body">
       <div class="wc-status"><div class="wc-status-main"><span class="wc-dot ${status.tone}"></span><span>${escapeHtml(status.label)}</span></div><span class="wc-muted">${escapeHtml(view.enemyFactionId ? `vs ${view.enemyFactionId}` : "")}</span></div>
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
-      ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
+      ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key" value="${escapeHtml(state.keyDraft)}"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
       ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}<div class="wc-row"><button class="wc-button primary" data-action="refresh">Refresh</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}
       <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it only to verify your profile and faction; the companion session is read-only.</div></details>
     </div>`;
@@ -985,7 +987,11 @@
       scheduleRender();
     });
     panel.querySelector('[data-action="connect"]')?.addEventListener("click", connectFromInput);
-    panel.querySelector('[data-field="api-key"]')?.addEventListener("keydown", (event) => {
+    const keyInput = panel.querySelector('[data-field="api-key"]');
+    keyInput?.addEventListener("input", (event) => {
+      state.keyDraft = String(event.currentTarget?.value || "");
+    });
+    keyInput?.addEventListener("keydown", (event) => {
       if (event.key === "Enter") connectFromInput();
     });
     panel.querySelector('[data-action="refresh"]')?.addEventListener("click", () => {
@@ -1001,6 +1007,8 @@
     });
     panel.querySelector('[data-action="forget"]')?.addEventListener("click", () => {
       storage.remove(KEY_STORAGE);
+      state.keyDraft = "";
+      stopTicker();
       closeSocket();
       state.session = null;
       state.token = "";
@@ -1016,11 +1024,13 @@
 
   function connectFromInput() {
     const input = document.querySelector(`#${PANEL_ID} [data-field="api-key"]`);
-    const key = String(input?.value || "").trim();
+    const key = String(input?.value || state.keyDraft || "").trim();
     if (!key) return;
     storage.set(KEY_STORAGE, key);
+    state.keyDraft = "";
     state.token = "";
     state.session = null;
+    startTicker();
     ensureConnected();
     scheduleRender();
   }

@@ -7,12 +7,13 @@ import { runInNewContext } from "node:vm";
 const require = createRequire(import.meta.url);
 const core = require("../src/core.cjs");
 
-const bootUserscript = async (href, { withBody = true } = {}) => {
+const bootUserscript = async (href, { withBody = true, visibilityState = "hidden" } = {}) => {
   const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
   const elements = new Map();
   const documentListeners = new Map();
   const menuCommands = new Map();
   let observerCallback = null;
+  let intervalCount = 0;
   const mount = {
     appendChild(element) {
       element.parentNode = this;
@@ -24,7 +25,7 @@ const bootUserscript = async (href, { withBody = true } = {}) => {
     documentElement: mount,
     head: mount,
     readyState: withBody ? "complete" : "loading",
-    visibilityState: "hidden",
+    visibilityState,
     hasFocus: () => false,
     addEventListener(name, callback) { documentListeners.set(name, callback); },
     querySelector: () => null,
@@ -62,7 +63,7 @@ const bootUserscript = async (href, { withBody = true } = {}) => {
     getComputedStyle: () => ({ display: "block", visibility: "visible" }),
     alert() {},
     requestAnimationFrame: (callback) => callback(),
-    setInterval(callback) { routeCheck = callback; return 1; },
+    setInterval(callback) { routeCheck = callback; intervalCount += 1; return intervalCount; },
     clearInterval() {},
     setTimeout: () => 1,
     clearTimeout() {},
@@ -73,6 +74,7 @@ const bootUserscript = async (href, { withBody = true } = {}) => {
   return {
     elements,
     menuCommands,
+    intervalCount: () => intervalCount,
     routeCheck: () => routeCheck?.(),
     notifyMutation: () => observerCallback?.([]),
     activateBody() {
@@ -193,13 +195,32 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.11"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.12"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
     assert.ok(source.includes('data-lpignore="true"'));
     assert.ok(source.includes('data-bwignore="true"'));
     assert.doesNotMatch(source, /data-field="api-key" type="password"/);
+  });
+
+  it("does not replace an API key while the player is entering it", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('keyDraft: ""'));
+    assert.ok(source.includes('if (getStoredKey()) startTicker();\n      else stopTicker();'));
+    assert.ok(source.includes('keyInput?.addEventListener("input"'));
+    assert.ok(source.includes('state.keyDraft = String(event.currentTarget?.value || "")'));
+    assert.ok(source.includes('value="${escapeHtml(state.keyDraft)}"'));
+    assert.ok(source.includes('const key = String(input?.value || state.keyDraft || "").trim()'));
+  });
+
+  it("does not start the one-second ticker before a key is submitted", async () => {
+    const page = await bootUserscript("https://www.torn.com/factions.php?step=your&type=1", {
+      visibilityState: "visible",
+    });
+
+    assert.equal(page.intervalCount(), 1, "only the faction-route watcher should be running");
   });
 
   it("persists a draggable panel position", async () => {

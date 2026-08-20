@@ -1,5 +1,10 @@
 # Askelads Warbuddy
 
+## 0.1.12
+
+- Stops the one-second live ticker until an API key has been submitted.
+- Keeps an unsaved in-memory key draft intact if Torn remounts the panel while it is being entered.
+
 Askelads Warbuddy is a read-only Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
 ## Install
