@@ -36,7 +36,7 @@
   const attackUrl = (memberId) =>
     `https://www.torn.com/page.php?sid=attack&user2ID=${encodeURIComponent(String(memberId || ""))}`;
 
-  const isFactionWarUrl = (value) => {
+  const isFactionPageUrl = (value) => {
     let url;
     try {
       url = new URL(String(value || ""), "https://www.torn.com/");
@@ -44,13 +44,7 @@
       return false;
     }
     if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return false;
-    if (url.pathname.toLowerCase() !== "/factions.php") return false;
-    let route = String(url.hash || "");
-    try { route = decodeURIComponent(route); } catch {}
-    route = route.toLowerCase().replace(/^#\/?/, "");
-    return /^war(?:[/?]|$)/.test(route)
-      || /(?:^|[/?&])tab=war(?:[/?&#]|$)/.test(route)
-      || /^ranked-?war(?:[/?]|$)/.test(route);
+    return /^\/factions\.php\/?$/i.test(url.pathname);
   };
 
   const memberStatus = (member) =>
@@ -178,7 +172,7 @@
     duration,
     formatBsp,
     inferEnemyFactionId,
-    isFactionWarUrl,
+    isFactionPageUrl,
     scoreForFaction,
     toTimestampMs,
   };

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.2
+// @version      0.1.3
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -59,7 +59,7 @@
   const attackUrl = (memberId) =>
     `https://www.torn.com/page.php?sid=attack&user2ID=${encodeURIComponent(String(memberId || ""))}`;
 
-  const isFactionWarUrl = (value) => {
+  const isFactionPageUrl = (value) => {
     let url;
     try {
       url = new URL(String(value || ""), "https://www.torn.com/");
@@ -67,13 +67,7 @@
       return false;
     }
     if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return false;
-    if (url.pathname.toLowerCase() !== "/factions.php") return false;
-    let route = String(url.hash || "");
-    try { route = decodeURIComponent(route); } catch {}
-    route = route.toLowerCase().replace(/^#\/?/, "");
-    return /^war(?:[/?]|$)/.test(route)
-      || /(?:^|[/?&])tab=war(?:[/?&#]|$)/.test(route)
-      || /^ranked-?war(?:[/?]|$)/.test(route);
+    return /^\/factions\.php\/?$/i.test(url.pathname);
   };
 
   const memberStatus = (member) =>
@@ -201,7 +195,7 @@
     duration,
     formatBsp,
     inferEnemyFactionId,
-    isFactionWarUrl,
+    isFactionPageUrl,
     scoreForFaction,
     toTimestampMs,
   };
@@ -214,7 +208,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.2";
+  const SCRIPT_VERSION = "0.1.3";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -741,7 +735,7 @@
   }
 
   function syncPageActivation() {
-    const active = core.isFactionWarUrl(window.location.href);
+    const active = core.isFactionPageUrl(window.location.href);
     if (state.active === active) return;
     state.active = active;
     if (!active) {

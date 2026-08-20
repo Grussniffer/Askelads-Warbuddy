@@ -49,6 +49,11 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.3 - 20 August 2026
+
+- Warbuddy is available throughout Torn's faction pages, including Torn's alternate and empty hash states.
+- Bazaar and every other non-faction page still stop the panel, ticker, and live WebSocket.
+
 ### 0.1.2 - 20 August 2026
 
 - Warbuddy now appears only on Torn faction war routes.

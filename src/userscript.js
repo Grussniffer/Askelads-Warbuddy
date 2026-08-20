@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.2";
+  const SCRIPT_VERSION = "0.1.3";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -532,7 +532,7 @@
   }
 
   function syncPageActivation() {
-    const active = core.isFactionWarUrl(window.location.href);
+    const active = core.isFactionPageUrl(window.location.href);
     if (state.active === active) return;
     state.active = active;
     if (!active) {
