@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.8
+// @version      0.1.9
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -209,7 +209,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.8";
+  const SCRIPT_VERSION = "0.1.9";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -561,6 +561,26 @@
     }
   }
 
+  function recoverFailedSocket(socket, message, reason = "Connection failed") {
+    if (socket !== state.socket) return;
+    clearSocketConnectTimer();
+    state.socket = null;
+    state.lastSocketClose = {
+      code: 1006,
+      reason,
+      at: new Date().toISOString(),
+    };
+    state.error = message;
+    state.phase = isForeground() ? "connecting" : "paused";
+    try {
+      if (socket.readyState < WebSocket.CLOSING) socket.close(4000, reason);
+    } catch {
+      // A rejected browser handshake may discard the socket before close() runs.
+    }
+    scheduleRender();
+    if (isForeground()) scheduleReconnect();
+  }
+
   function subscribeTopics(socket) {
     for (const topic of TOPICS) {
       socket.send(JSON.stringify({
@@ -639,19 +659,14 @@
       state.socket = socket;
       clearSocketConnectTimer();
       state.socketConnectTimer = setTimeout(() => {
-        if (socket !== state.socket || socket.readyState !== WebSocket.CONNECTING) return;
-        state.lastSocketClose = {
-          code: 1006,
-          reason: "Handshake timed out",
-          at: new Date().toISOString(),
-        };
-        state.error = "Live connection timed out. Retrying automatically.";
-        state.socket = null;
-        try { socket.close(4000, "Connection timeout"); }
-        catch { /* The browser may already have discarded the pending socket. */ }
-        state.phase = "connecting";
-        scheduleRender();
-        scheduleReconnect();
+        if (socket !== state.socket) return;
+        state.socketConnectTimer = 0;
+        if (socket.readyState === WebSocket.OPEN) return;
+        recoverFailedSocket(
+          socket,
+          "Live connection timed out. Retrying automatically.",
+          "Handshake timed out"
+        );
       }, SOCKET_CONNECT_TIMEOUT_MS);
       socket.addEventListener("open", () => {
         if (socket !== state.socket) return;
@@ -667,6 +682,14 @@
       socket.addEventListener("error", () => {
         if (socket !== state.socket) return;
         state.lastSocketErrorAt = new Date().toISOString();
+        setTimeout(() => {
+          if (socket !== state.socket || socket.readyState < WebSocket.CLOSING) return;
+          recoverFailedSocket(
+            socket,
+            "Live connection was rejected. Retrying automatically.",
+            "Handshake rejected"
+          );
+        }, 0);
       });
       socket.addEventListener("close", (event) => {
         if (socket !== state.socket) return;

@@ -49,6 +49,12 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.9 - 20 August 2026
+
+- Tampermonkey extension-origin sockets now use the backend's restricted, signed Warbuddy session path.
+- Rejected handshakes recover even when the browser reports `error` and `CLOSED` without a matching `close` event.
+- The connection watchdog can no longer remain armed around an already-closed socket.
+
 ### 0.1.8 - 20 August 2026
 
 - A 15-second watchdog replaces WebSockets that remain stuck in the browser's connecting state.
