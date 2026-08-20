@@ -49,6 +49,12 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.6 - 20 August 2026
+
+- The Torn API key entry no longer presents itself as a browser password field.
+- Browser and password-manager autofill hints prevent Warbuddy from prompting for or inserting an email address elsewhere on Torn.
+- The key remains visually masked while it is entered.
+
 ### 0.1.5 - 20 August 2026
 
 - Warbuddy now uses the same body-mounted `div` and DOM-observer lifecycle pattern as the OC userscript.

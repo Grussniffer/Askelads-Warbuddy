@@ -188,6 +188,19 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes("state.privacyOpen = event.currentTarget.open"));
     assert.ok(source.includes("core.isFactionPageUrl(window.location.href)"));
   });
+
+  it("keeps the API key field out of browser login autofill", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('class="wc-input wc-secret-input"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.6"'));
+    assert.ok(source.includes('type="text"'));
+    assert.ok(source.includes('autocomplete="one-time-code"'));
+    assert.ok(source.includes('data-1p-ignore'));
+    assert.ok(source.includes('data-lpignore="true"'));
+    assert.ok(source.includes('data-bwignore="true"'));
+    assert.doesNotMatch(source, /data-field="api-key" type="password"/);
+  });
 });
 
 describe("War Companion route activation", () => {

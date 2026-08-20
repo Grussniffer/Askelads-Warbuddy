@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.5
+// @version      0.1.6
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -209,7 +209,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.5";
+  const SCRIPT_VERSION = "0.1.6";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -305,6 +305,7 @@
     #${PANEL_ID} .wc-item.retal { box-shadow:inset 3px 0 #38bdf8; }
     #${PANEL_ID} .wc-row { display:flex; gap:5px; margin-top:6px; }
     #${PANEL_ID} .wc-input { min-width:0; flex:1; border:1px solid #3f3f46; border-radius:5px; background:#09090b; color:#f4f4f5; padding:6px; }
+    #${PANEL_ID} .wc-secret-input { -webkit-text-security:disc; }
     #${PANEL_ID} .wc-button, #${PANEL_ID} .wc-link { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; border:1px solid #3f3f46; border-radius:5px; background:#27272a; color:#f4f4f5; padding:5px 7px; text-decoration:none; font:inherit; font-weight:700; cursor:pointer; }
     #${PANEL_ID} .wc-button:hover, #${PANEL_ID} .wc-link:hover { background:#3f3f46; }
     #${PANEL_ID} .wc-button.primary, #${PANEL_ID} .wc-link.primary { border-color:#065f46; background:#064e3b; color:#d1fae5; }
@@ -676,7 +677,7 @@
     <div class="wc-body">
       <div class="wc-status"><div class="wc-status-main"><span class="wc-dot ${status.tone}"></span><span>${escapeHtml(status.label)}</span></div><span class="wc-muted">${escapeHtml(view.enemyFactionId ? `vs ${view.enemyFactionId}` : "")}</span></div>
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
-      ${savedKey ? "" : `<div class="wc-row"><input class="wc-input" data-field="api-key" type="password" autocomplete="off" placeholder="Torn API key"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
+      ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
       ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}<div class="wc-row"><button class="wc-button primary" data-action="refresh">Refresh</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}
       <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it only to verify your profile and faction; the companion session is read-only.</div></details>
     </div>`;
