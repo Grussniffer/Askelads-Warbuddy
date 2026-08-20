@@ -1,10 +1,10 @@
 # Askelads Warbuddy
 
-## 0.1.13
+## 0.1.14
 
-- Moves the live connection state beside the player name and version.
-- Shows the named allied and enemy faction matchup in the compact header.
-- Moves **Reconnect** and **Forget key** into Privacy so the normal panel stays focused on actions.
+- Supports Torn PDA's authenticated HTTP bridge when its native WebSocket is unavailable.
+- Keeps the bearer token on PDA snapshot requests so the panel remains live through compatible polling.
+- Starts the compatible feed immediately in Torn PDA instead of waiting for a WebSocket timeout.
 
 Askelads Warbuddy is a read-only Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -34,6 +34,7 @@ Warbuddy displays information and links only. It does not attack, click, submit,
 - Warbuddy connects only while a Torn faction tab is visible and the device is online.
 - Its backend session can read only War Tracker settings, rosters, score, and retaliation for the verified faction.
 - WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached read-only snapshot without making extra Torn API calls.
+- Torn PDA normally uses this compatible snapshot path and may therefore show **Live (compatible)** instead of **Live**.
 
 If the earlier **Lads War Companion** script is installed, remove or disable it before installing Warbuddy so two copies do not run on the same Torn page.
 
@@ -55,6 +56,18 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.14 - 20 August 2026
+
+- Torn PDA HTTP requests now retain their authorization headers.
+- Warbuddy uses Torn PDA's HTTP bridge when its userscript transport is unavailable, while desktop userscript managers retain `GM_xmlhttpRequest`.
+- Torn PDA skips the unsupported WebSocket attempt and begins compatible polling immediately.
+
+### 0.1.13 - 20 August 2026
+
+- Moves the live connection state beside the player name and version.
+- Shows the named allied and enemy faction matchup in the compact header.
+- Moves **Reconnect** and **Forget key** into Privacy so the normal panel stays focused on actions.
 
 ### 0.1.12 - 20 August 2026
 

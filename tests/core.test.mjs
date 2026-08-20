@@ -195,13 +195,25 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.13"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.14"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
     assert.ok(source.includes('data-lpignore="true"'));
     assert.ok(source.includes('data-bwignore="true"'));
     assert.doesNotMatch(source, /data-field="api-key" type="password"/);
+  });
+
+  it("keeps authorization headers on Torn PDA's HTTP bridge", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    const pdaGet = source.indexOf('window.PDA_httpGet(options.url, options.headers || {})');
+    const pdaPost = source.indexOf('window.PDA_httpPost(options.url, options.headers || {}, options.data || "")');
+
+    assert.ok(pdaGet >= 0);
+    assert.ok(pdaPost >= 0);
+    assert.ok(source.includes('const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function"'));
+    assert.ok(source.includes('if (isTornPda) {\n        if (!fallbackIsFresh()) state.phase = "connecting";\n        startFallbackPolling();'));
   });
 
   it("does not replace an API key while the player is entering it", async () => {

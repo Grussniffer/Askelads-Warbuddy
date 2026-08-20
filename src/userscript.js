@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.13";
+  const SCRIPT_VERSION = "0.1.14";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -14,6 +14,7 @@
   const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
   const FALLBACK_POLL_MS = 10_000;
   const FALLBACK_SOCKET_RETRY_MS = 60_000;
+  const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function";
   const PANEL_EDGE_GAP = 8;
   const TOPICS = ["war_tracker_settings", "war_tracker", "score", "retaliation"];
 
@@ -144,7 +145,8 @@
     if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest({ ...options, anonymous: true });
     const method = String(options.method || "GET").toUpperCase();
     if (method === "GET" && typeof window.PDA_httpGet === "function") {
-      window.PDA_httpGet(options.url).then((value) => options.onload?.(normalizeResponse(value))).catch(options.onerror);
+      window.PDA_httpGet(options.url, options.headers || {})
+        .then((value) => options.onload?.(normalizeResponse(value))).catch(options.onerror);
       return;
     }
     if (method === "POST" && typeof window.PDA_httpPost === "function") {
@@ -583,6 +585,12 @@
       const expiresAt = Date.parse(String(state.session?.wsSessionTokenExpiresAt || state.session?.expiresAt || ""));
       if (!state.token || !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) await authenticate();
       if (!isForeground()) return;
+      if (isTornPda) {
+        if (!fallbackIsFresh()) state.phase = "connecting";
+        startFallbackPolling();
+        scheduleRender();
+        return;
+      }
       if (!fallbackIsFresh()) {
         state.phase = "connecting";
         scheduleRender();
