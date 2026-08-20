@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.23
+// @version      0.1.24
 // @description  Shows a war action queue, shared target Dibs, watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -354,7 +354,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.23";
+  const SCRIPT_VERSION = "0.1.24";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -1256,6 +1256,18 @@
     }, 5_000);
   }
 
+  function applyReleasedTargetWatchState(memberId, response) {
+    const savedIds = normalizeTargetIds(
+      Array.isArray(response?.watchedEnemyMemberIds)
+        ? response.watchedEnemyMemberIds
+        : savedTargetIds().filter((candidate) => candidate !== memberId)
+    );
+    const draftIds = normalizeTargetIds(state.targetDraft).filter((candidate) => candidate !== memberId);
+    state.settings = { ...(state.settings || {}), watchedEnemyMemberIds: savedIds };
+    state.targetDraft = state.targetsOpen || state.targetsDirty ? draftIds : savedIds;
+    state.targetsDirty = JSON.stringify(normalizeTargetIds(state.targetDraft)) !== JSON.stringify(savedIds);
+  }
+
   async function updateDibs(action, targetMemberId) {
     const memberId = Number(targetMemberId || 0);
     if (state.dibsBusyTargetId || !Number.isSafeInteger(memberId) || memberId <= 0) return;
@@ -1267,7 +1279,7 @@
       if (!state.token || !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) await authenticate();
       const factionId = String(state.session?.factionId || "");
       if (!factionId || !state.token) throw new Error("Companion session is unavailable");
-      state.dibs = await requestJson({
+      const response = await requestJson({
         method: "POST",
         url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/dibs`),
         headers: {
@@ -1277,6 +1289,8 @@
         data: JSON.stringify({ action, targetMemberId: memberId }),
         label: "Dibs",
       });
+      state.dibs = response;
+      if (action === "release") applyReleasedTargetWatchState(memberId, response);
       state.dibsInspectTargetId = action === "claim" ? memberId : 0;
     } catch (error) {
       showDibsError(error?.message || "Dibs could not be updated");

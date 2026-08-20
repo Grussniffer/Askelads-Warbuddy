@@ -7,6 +7,19 @@ import { runInNewContext } from "node:vm";
 const require = createRequire(import.meta.url);
 const core = require("../src/core.cjs");
 
+it("keeps package and userscript release versions aligned", async () => {
+  const [packageSource, header, userscript] = await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../userscript.header.txt", import.meta.url), "utf8"),
+    readFile(new URL("../src/userscript.js", import.meta.url), "utf8"),
+  ]);
+  const version = JSON.parse(packageSource).version;
+  const escapedVersion = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  assert.match(header, new RegExp(`^// @version\\s+${escapedVersion}$`, "m"));
+  assert.match(userscript, new RegExp(`const SCRIPT_VERSION = "${escapedVersion}";`));
+});
+
 const bootUserscript = async (href, { withBody = true, visibilityState = "hidden" } = {}) => {
   const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
   const elements = new Map();
@@ -320,7 +333,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.23"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.24"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -400,6 +413,15 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes("top:calc(100% + 4px); bottom:auto"));
     assert.ok(source.includes('width:16px; height:16px'));
     assert.doesNotMatch(source, /api\.torn\.com[^\n]*dibs/i);
+  });
+
+  it("removes a released Dibs target from personal watch without discarding other draft edits", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes("function applyReleasedTargetWatchState(memberId, response)"));
+    assert.ok(source.includes("savedTargetIds().filter((candidate) => candidate !== memberId)"));
+    assert.ok(source.includes("normalizeTargetIds(state.targetDraft).filter((candidate) => candidate !== memberId)"));
+    assert.ok(source.includes('if (action === "release") applyReleasedTargetWatchState(memberId, response)'));
   });
 
   it("does not start the one-second ticker before a key is submitted", async () => {

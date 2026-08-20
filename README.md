@@ -1,9 +1,9 @@
 # Askelads Warbuddy
 
-## 0.1.23
+## 0.1.24
 
-- Opens the top Action Queue Dibs detail below its marker so the text is not clipped by the section heading.
-- Keeps the marker, target row, watched-target list, and mobile panel dimensions unchanged.
+- Releasing Dibs also removes that target from your saved watch list.
+- Preserves every other saved target and any other unsaved picker changes.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -58,6 +58,12 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.24 - 20 August 2026
+
+- Makes Dibs release and personal target watching one consistent action.
+- Removes the released target from only the releasing player's saved watch list.
+- Preserves other players' lists, the player's other watched targets, and unrelated unsaved picker changes.
 
 ### 0.1.23 - 20 August 2026
 
