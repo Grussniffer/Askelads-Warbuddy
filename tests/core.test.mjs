@@ -2,9 +2,64 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { describe, it } from "node:test";
+import { runInNewContext } from "node:vm";
 
 const require = createRequire(import.meta.url);
 const core = require("../src/core.cjs");
+
+const bootUserscript = async (href, { withBody = true } = {}) => {
+  const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+  const elements = new Map();
+  const mount = {
+    appendChild(element) {
+      element.parentNode = this;
+      elements.set(element.id, element);
+    },
+  };
+  const document = {
+    body: withBody ? mount : null,
+    documentElement: mount,
+    head: mount,
+    readyState: "complete",
+    visibilityState: "hidden",
+    hasFocus: () => false,
+    addEventListener() {},
+    querySelector: () => null,
+    getElementById: (id) => elements.get(id) || null,
+    createElement() {
+      return {
+        id: "",
+        parentNode: null,
+        classList: { toggle() {} },
+        addEventListener() {},
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        remove() { elements.delete(this.id); },
+      };
+    },
+  };
+  let routeCheck = null;
+  const context = {
+    AskeladdsWarCompanionCore: core,
+    URL,
+    console,
+    document,
+    location: { href },
+    GM_addStyle() {},
+    GM_getValue: (_key, fallback) => fallback,
+    GM_setValue() {},
+    GM_deleteValue() {},
+    requestAnimationFrame: (callback) => callback(),
+    setInterval(callback) { routeCheck = callback; return 1; },
+    clearInterval() {},
+    setTimeout: () => 1,
+    clearTimeout() {},
+    addEventListener() {},
+  };
+  context.window = context;
+  runInNewContext(source, context);
+  return { elements, routeCheck: () => routeCheck?.() };
+};
 
 describe("War Companion action queue", () => {
   it("prioritizes urgent chain and hospital actions before online targets", () => {
@@ -124,5 +179,17 @@ describe("War Companion route activation", () => {
     assert.equal(core.isFactionPageUrl("https://www.torn.com/bazaar.php"), false);
     assert.equal(core.isFactionPageUrl("https://www.torn.com/page.php?sid=attack"), false);
     assert.equal(core.isFactionPageUrl("https://example.com/factions.php#/war/rank"), false);
+  });
+
+  it("mounts and restores the panel on faction pages without mounting on Bazaar", async () => {
+    const faction = await bootUserscript("https://www.torn.com/factions.php?step=your&type=1", { withBody: false });
+    assert.equal(faction.elements.has("lads-war-companion"), true);
+
+    faction.elements.get("lads-war-companion").remove();
+    faction.routeCheck();
+    assert.equal(faction.elements.has("lads-war-companion"), true);
+
+    const bazaar = await bootUserscript("https://www.torn.com/bazaar.php");
+    assert.equal(bazaar.elements.has("lads-war-companion"), false);
   });
 });

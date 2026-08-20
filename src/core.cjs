@@ -44,7 +44,7 @@
       return false;
     }
     if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return false;
-    return /^\/factions\.php\/?$/i.test(url.pathname);
+    return /^\/factions(?:\.php)?(?:\/|$)/i.test(url.pathname);
   };
 
   const memberStatus = (member) =>

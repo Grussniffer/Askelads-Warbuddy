@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.3
+// @version      0.1.4
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -67,7 +67,7 @@
       return false;
     }
     if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return false;
-    return /^\/factions\.php\/?$/i.test(url.pathname);
+    return /^\/factions(?:\.php)?(?:\/|$)/i.test(url.pathname);
   };
 
   const memberStatus = (member) =>
@@ -208,7 +208,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.3";
+  const SCRIPT_VERSION = "0.1.4";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -629,7 +629,8 @@
 
   function render() {
     state.renderQueued = false;
-    if (!document.body) return;
+    const mount = document.body || document.documentElement;
+    if (!mount) return;
     if (!state.active) {
       document.getElementById(PANEL_ID)?.remove();
       return;
@@ -638,7 +639,7 @@
     if (!panel) {
       panel = document.createElement("section");
       panel.id = PANEL_ID;
-      document.body.appendChild(panel);
+      mount.appendChild(panel);
     }
     const currentBody = panel.querySelector(".wc-body");
     const bodyScrollTop = Number(currentBody?.scrollTop || 0);
@@ -731,22 +732,26 @@
 
   function start() {
     syncPageActivation();
+    syncForegroundState();
     if (!state.routeTimer) state.routeTimer = setInterval(syncPageActivation, 1_000);
   }
 
   function syncPageActivation() {
     const active = core.isFactionPageUrl(window.location.href);
-    if (state.active === active) return;
-    state.active = active;
     if (!active) {
-      stopTicker();
-      closeSocket();
-      state.phase = getStoredKey() ? "paused" : "idle";
-      document.getElementById(PANEL_ID)?.remove();
+      if (state.active || document.getElementById(PANEL_ID)) {
+        stopTicker();
+        closeSocket();
+        state.phase = getStoredKey() ? "paused" : "idle";
+        document.getElementById(PANEL_ID)?.remove();
+      }
+      state.active = false;
       return;
     }
-    render();
-    syncForegroundState();
+    const becameActive = !state.active;
+    state.active = true;
+    if (becameActive || !document.getElementById(PANEL_ID)) render();
+    if (becameActive) syncForegroundState();
   }
 
   document.addEventListener("visibilitychange", syncForegroundState);
@@ -754,11 +759,13 @@
   window.addEventListener("blur", syncForegroundState);
   window.addEventListener("hashchange", syncPageActivation);
   window.addEventListener("popstate", syncPageActivation);
+  window.addEventListener("pageshow", start);
   window.addEventListener("pagehide", () => {
     if (state.routeTimer) clearInterval(state.routeTimer);
     state.routeTimer = 0;
     stopTicker();
     closeSocket();
+    state.active = false;
   });
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });

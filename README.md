@@ -49,6 +49,12 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.4 - 20 August 2026
+
+- Warbuddy now remounts itself if Torn replaces the faction page shell or removes the panel.
+- Browser back/forward cache restores restart route checks and the live connection cleanly.
+- Faction path matching also supports extensionless Torn faction routes while Bazaar remains excluded.
+
 ### 0.1.3 - 20 August 2026
 
 - Warbuddy is available throughout Torn's faction pages, including Torn's alternate and empty hash states.
