@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.12
+// @version      0.1.13
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -210,7 +210,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.12";
+  const SCRIPT_VERSION = "0.1.13";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -259,6 +259,7 @@
     observedBody: null,
     authPromise: null,
     rosters: new Map(),
+    factionNames: new Map(),
     scores: new Map(),
     settings: null,
     retaliation: { attacks: [] },
@@ -296,16 +297,18 @@
     #${PANEL_ID} { display:block !important; visibility:visible !important; opacity:1 !important; position:fixed !important; right:10px; bottom:10px; z-index:2147483647 !important; width:min(320px,calc(100vw - 20px)); max-height:min(70vh,620px); overflow:hidden; border:1px solid #3f3f46; border-radius:7px; background:#111113; color:#f4f4f5; box-shadow:0 12px 32px rgba(0,0,0,.55); font:12px/1.35 Arial,Helvetica,sans-serif; }
     #${PANEL_ID} * { box-sizing:border-box; letter-spacing:0; }
     #${PANEL_ID}.wc-collapsed .wc-body { display:none; }
-    #${PANEL_ID} .wc-header { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; padding:6px 8px; border-bottom:1px solid #27272a; background:#18181b; cursor:move; touch-action:none; user-select:none; }
+    #${PANEL_ID} .wc-header { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; min-height:42px; padding:5px 7px; border-bottom:1px solid #27272a; background:#18181b; cursor:move; touch-action:none; user-select:none; }
     #${PANEL_ID}.wc-dragging .wc-header { cursor:grabbing; }
-    #${PANEL_ID} .wc-title { min-width:0; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    #${PANEL_ID} .wc-version { color:#71717a; font-size:10px; font-weight:400; }
-    #${PANEL_ID} .wc-body { max-height:calc(min(70vh,620px) - 34px); overflow:auto; padding:7px; }
-    #${PANEL_ID} .wc-status { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:6px; padding:5px 6px; border:1px solid #27272a; border-radius:5px; background:#09090b; }
+    #${PANEL_ID} .wc-heading { min-width:0; flex:1; }
+    #${PANEL_ID} .wc-title-row { display:flex; min-width:0; align-items:center; gap:4px; }
+    #${PANEL_ID} .wc-player { min-width:0; flex:0 1 auto; overflow:hidden; font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    #${PANEL_ID} .wc-version { flex:0 0 auto; color:#71717a; font-size:10px; font-weight:400; }
+    #${PANEL_ID} .wc-header-status { display:inline-flex; flex:0 0 auto; align-items:center; gap:3px; margin-left:auto; color:#d4d4d8; font-size:10px; font-weight:600; }
+    #${PANEL_ID} .wc-matchup { margin-top:1px; overflow:hidden; color:#a1a1aa; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+    #${PANEL_ID} .wc-body { max-height:calc(min(70vh,620px) - 42px); overflow:auto; padding:7px; }
     #${PANEL_ID} .wc-dot { width:7px; height:7px; flex:0 0 auto; border-radius:50%; background:#71717a; }
     #${PANEL_ID} .wc-dot.live { background:#10b981; }
     #${PANEL_ID} .wc-dot.wait { background:#f59e0b; }
-    #${PANEL_ID} .wc-status-main { display:flex; min-width:0; align-items:center; gap:6px; }
     #${PANEL_ID} .wc-muted { color:#a1a1aa; }
     #${PANEL_ID} .wc-error { margin-bottom:6px; padding:6px; border:1px solid #7f1d1d; border-radius:5px; background:#2a1114; color:#fecaca; }
     #${PANEL_ID} .wc-section { margin-top:6px; border:1px solid #27272a; border-radius:5px; overflow:hidden; }
@@ -330,7 +333,8 @@
     #${PANEL_ID} details { margin-top:6px; border:1px solid #27272a; border-radius:5px; color:#a1a1aa; }
     #${PANEL_ID} summary { cursor:pointer; padding:5px 6px; color:#d4d4d8; font-weight:700; }
     #${PANEL_ID} .wc-privacy { padding:0 6px 6px; }
-    @media (max-width:520px) { #${PANEL_ID} { right:6px; bottom:6px; width:calc(100vw - 12px); max-height:58vh; } #${PANEL_ID} .wc-body { max-height:calc(58vh - 34px); } }
+    #${PANEL_ID} .wc-private-actions { display:flex; gap:5px; padding:0 6px 6px; }
+    @media (max-width:520px) { #${PANEL_ID} { right:6px; bottom:6px; width:calc(100vw - 12px); max-height:58vh; } #${PANEL_ID} .wc-body { max-height:calc(58vh - 42px); } }
   `);
 
   const normalizeResponse = (response) => {
@@ -543,6 +547,9 @@
       });
       if (!response?.session?.wsSessionToken) throw new Error("Backend did not return a companion session");
       state.session = response.session;
+      if (response.session.factionId && response.session.factionName) {
+        state.factionNames.set(String(response.session.factionId), String(response.session.factionName));
+      }
       state.token = response.session.wsSessionToken;
       state.reconnectAttempt = 0;
       state.error = "";
@@ -632,6 +639,8 @@
     if (topic === "war_tracker") {
       const factionId = String(payload?.factionId || payload?.faction_id || "");
       if (factionId) {
+        const factionName = String(payload?.factionName || payload?.faction_name || "").trim();
+        if (factionName) state.factionNames.set(factionId, factionName);
         const next = core.applyRosterUpdate(state.rosters.get(factionId), payload);
         state.rosters.set(factionId, next);
         if (next.needsSnapshot) requestRosterSnapshot();
@@ -650,10 +659,20 @@
 
   function applyFallbackSnapshot(snapshot) {
     state.settings = snapshot?.settings || null;
+    const factionNames = new Map();
+    const ownFactionId = String(state.session?.factionId || "");
+    const ownFactionName = String(state.session?.factionName || "").trim();
+    if (ownFactionId && ownFactionName) factionNames.set(ownFactionId, ownFactionName);
+    for (const [factionId, factionName] of Object.entries(snapshot?.factionNames || {})) {
+      const normalizedName = String(factionName || "").trim();
+      if (factionId && normalizedName) factionNames.set(String(factionId), normalizedName);
+    }
     const rosters = new Map();
     for (const payload of Array.isArray(snapshot?.rosters) ? snapshot.rosters : []) {
       const factionId = String(payload?.factionId || payload?.faction_id || "");
       if (!factionId) continue;
+      const factionName = String(payload?.factionName || payload?.faction_name || "").trim();
+      if (factionName) factionNames.set(factionId, factionName);
       rosters.set(factionId, core.applyRosterUpdate(undefined, payload));
     }
     const scores = new Map();
@@ -662,6 +681,7 @@
       if (factionId) scores.set(factionId, score);
     }
     state.rosters = rosters;
+    state.factionNames = factionNames;
     state.scores = scores;
     state.retaliation = snapshot?.retaliation || { attacks: [] };
     scheduleRender();
@@ -883,6 +903,8 @@
   function sessionView() {
     const ownFactionId = String(state.session?.factionId || "");
     const enemyFactionId = core.inferEnemyFactionId(ownFactionId, state.scores, state.rosters);
+    const ownFactionName = String(state.session?.factionName || state.factionNames.get(ownFactionId) || "").trim();
+    const enemyFactionName = String(state.factionNames.get(enemyFactionId) || "").trim();
     const ownRoster = state.rosters.get(ownFactionId)?.members || [];
     const enemyRoster = state.rosters.get(enemyFactionId)?.members || [];
     const ownMember = ownRoster.find((member) => Number(member?.member_id || 0) === Number(state.session?.playerId || 0));
@@ -894,7 +916,7 @@
       nowMs: state.nowMs,
     });
     const retaliation = core.activeRetaliations(state.retaliation, Math.floor(state.nowMs / 1000));
-    return { ownFactionId, enemyFactionId, actions, retaliation };
+    return { ownFactionId, ownFactionName, enemyFactionId, enemyFactionName, actions, retaliation };
   }
 
   const statusView = () => {
@@ -960,17 +982,22 @@
     const retaliationSection = view.retaliation.length
       ? `<div class="wc-section"><div class="wc-section-title"><span>Retaliations</span><span class="wc-count">${view.retaliation.length}</span></div>${view.retaliation.map(retaliationMarkup).join("")}</div>`
       : "";
+    const ownFactionLabel = view.ownFactionName || (view.ownFactionId ? `Faction ${view.ownFactionId}` : "");
+    const enemyFactionLabel = view.enemyFactionName || (view.enemyFactionId ? `Faction ${view.enemyFactionId}` : "");
+    const matchupLabel = enemyFactionLabel ? `${ownFactionLabel} vs ${enemyFactionLabel}` : ownFactionLabel;
+    const matchupTitle = view.enemyFactionId
+      ? `${ownFactionLabel} (${view.ownFactionId}) vs ${enemyFactionLabel} (${view.enemyFactionId})`
+      : ownFactionLabel;
 
     panel.innerHTML = `<div class="wc-header">
-      <div class="wc-title">${escapeHtml(state.session?.playerName || "War Companion")} <span class="wc-version">v${SCRIPT_VERSION}</span></div>
+      <div class="wc-heading"><div class="wc-title-row"><span class="wc-player">${escapeHtml(state.session?.playerName || "War Companion")}</span><span class="wc-version">v${SCRIPT_VERSION}</span><span class="wc-header-status"><span class="wc-dot ${status.tone}"></span>${escapeHtml(status.label)}</span></div>${matchupLabel ? `<div class="wc-matchup" title="${escapeHtml(matchupTitle)}">${escapeHtml(matchupLabel)}</div>` : ""}</div>
       <button class="wc-button wc-icon" data-action="collapse" title="${state.collapsed ? "Expand" : "Collapse"}">${state.collapsed ? "+" : "-"}</button>
     </div>
     <div class="wc-body">
-      <div class="wc-status"><div class="wc-status-main"><span class="wc-dot ${status.tone}"></span><span>${escapeHtml(status.label)}</span></div><span class="wc-muted">${escapeHtml(view.enemyFactionId ? `vs ${view.enemyFactionId}` : "")}</span></div>
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
       ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key" value="${escapeHtml(state.keyDraft)}"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
-      ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}<div class="wc-row"><button class="wc-button primary" data-action="refresh">Refresh</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}
-      <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it only to verify your profile and faction; the companion session is read-only.</div></details>
+      ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}` : ""}
+      <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it only to verify your profile and faction; the companion session is read-only.</div>${savedKey ? `<div class="wc-private-actions"><button class="wc-button" data-action="refresh">Reconnect</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}</details>
     </div>`;
 
     const nextBody = panel.querySelector(".wc-body");
@@ -1015,6 +1042,7 @@
       state.error = "";
       state.phase = "idle";
       state.rosters.clear();
+      state.factionNames.clear();
       state.scores.clear();
       state.settings = null;
       state.retaliation = { attacks: [] };

@@ -195,7 +195,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.12"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.13"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -213,6 +213,29 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes('state.keyDraft = String(event.currentTarget?.value || "")'));
     assert.ok(source.includes('value="${escapeHtml(state.keyDraft)}"'));
     assert.ok(source.includes('const key = String(input?.value || state.keyDraft || "").trim()'));
+  });
+
+  it("keeps live state and named factions compact in the header", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('class="wc-header-status"'));
+    assert.ok(source.includes('class="wc-matchup"'));
+    assert.ok(source.includes("ownFactionName"));
+    assert.ok(source.includes("enemyFactionName"));
+    assert.ok(source.includes("factionNames: new Map()"));
+    assert.doesNotMatch(source, /<div class="wc-status">/);
+  });
+
+  it("keeps recovery controls inside Privacy instead of the live panel", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    const privacyAt = source.indexOf('<details data-section="privacy"');
+    const reconnectAt = source.indexOf('data-action="refresh">Reconnect');
+    const forgetAt = source.indexOf('data-action="forget">Forget key');
+    assert.ok(privacyAt > 0);
+    assert.ok(reconnectAt > privacyAt);
+    assert.ok(forgetAt > reconnectAt);
+    assert.doesNotMatch(source, /data-action="refresh">Refresh/);
   });
 
   it("does not start the one-second ticker before a key is submitted", async () => {

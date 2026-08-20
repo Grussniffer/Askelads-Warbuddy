@@ -1,9 +1,10 @@
 # Askelads Warbuddy
 
-## 0.1.12
+## 0.1.13
 
-- Stops the one-second live ticker until an API key has been submitted.
-- Keeps an unsaved in-memory key draft intact if Torn remounts the panel while it is being entered.
+- Moves the live connection state beside the player name and version.
+- Shows the named allied and enemy faction matchup in the compact header.
+- Moves **Reconnect** and **Forget key** into Privacy so the normal panel stays focused on actions.
 
 Askelads Warbuddy is a read-only Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -54,6 +55,11 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.12 - 20 August 2026
+
+- Stops the one-second live ticker until an API key has been submitted.
+- Keeps an unsaved in-memory key draft intact if Torn remounts the panel while it is being entered.
 
 ### 0.1.11 - 20 August 2026
 
