@@ -1,10 +1,10 @@
 # Askelads Warbuddy
 
-## 0.1.18
+## 0.1.19
 
-- Refreshes compatible-mode snapshots every two seconds while the panel is expanded.
-- Pauses the WebSocket, compatible polling, and countdown ticker while Warbuddy is collapsed.
-- Reconnects immediately when the panel is expanded again.
+- Keeps routine WebSocket rejection quiet while switching to compatible mode.
+- Shows a connection error only after three consecutive compatible snapshot failures.
+- Keeps authentication and permission errors immediate.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -58,6 +58,12 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.19 - 20 August 2026
+
+- Removes the brief WebSocket rejection warning shown during normal compatible-mode startup.
+- Requires three consecutive compatible snapshot failures before displaying a transport error.
+- Keeps transport diagnostics available from the userscript menu without adding noise to the panel.
 
 ### 0.1.18 - 20 August 2026
 

@@ -285,7 +285,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.18"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.19"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -379,16 +379,18 @@ describe("War Companion panel state", () => {
     assert.doesNotMatch(source, /state\.error = "Live connection failed"/);
   });
 
-  it("recovers a socket that never completes its opening handshake", async () => {
+  it("recovers a socket handshake failure without flashing a transport error", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes("const SOCKET_CONNECT_TIMEOUT_MS = 15_000"));
     assert.ok(source.includes("socketConnectTimer: 0"));
-    assert.ok(source.includes('"Live connection timed out. Retrying automatically."'));
     assert.ok(source.includes('"Handshake timed out"'));
     assert.ok(source.includes("state.socketConnectTimer = 0"));
     assert.doesNotMatch(source, /socket\.readyState !== WebSocket\.CONNECTING\) return/);
-    assert.ok(source.includes('"Live connection was rejected. Retrying automatically."'));
+    assert.ok(source.includes('"Handshake rejected"'));
+    assert.doesNotMatch(source, /Live connection was rejected\. Retrying automatically\./);
+    assert.ok(source.includes('state.error = "";\n    state.phase = fallbackIsFresh()'));
+    assert.ok(source.includes('if (state.phase === "error" && state.error)'));
     assert.ok(source.includes("recoverFailedSocket("));
     assert.ok(source.includes("scheduleReconnect();"));
   });
@@ -401,6 +403,8 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes("/war-companion/snapshot?timestamp="));
     assert.ok(source.includes("headers: { Authorization: `Bearer ${state.token}` }"));
     assert.ok(source.includes("startFallbackPolling();"));
+    assert.ok(source.includes("fallbackFailureCount: 0"));
+    assert.ok(source.includes("state.fallbackFailureCount >= 3"));
     assert.ok(source.includes('if (state.phase === "fallback") return { label: "Live (compatible)", tone: "live" };'));
     assert.doesNotMatch(source, /war-companion\/snapshot[^\n]*tornApiKey/);
   });

@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.18";
+  const SCRIPT_VERSION = "0.1.19";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -47,6 +47,7 @@
     fallbackInFlight: false,
     fallbackActive: false,
     fallbackGeneration: 0,
+    fallbackFailureCount: 0,
     lastFallbackAt: "",
     lastFallbackError: "",
     keyDraft: "",
@@ -414,7 +415,7 @@
     }
   }
 
-  function recoverFailedSocket(socket, message, reason = "Connection failed") {
+  function recoverFailedSocket(socket, reason = "Connection failed") {
     if (socket !== state.socket) return;
     clearSocketConnectTimer();
     state.socket = null;
@@ -423,13 +424,8 @@
       reason,
       at: new Date().toISOString(),
     };
-    if (fallbackIsFresh()) {
-      state.error = "";
-      state.phase = "fallback";
-    } else {
-      state.error = message;
-      state.phase = isForeground() ? "connecting" : "paused";
-    }
+    state.error = "";
+    state.phase = fallbackIsFresh() ? "fallback" : isForeground() ? "connecting" : "paused";
     try {
       if (socket.readyState < WebSocket.CLOSING) socket.close(4000, reason);
     } catch {
@@ -533,6 +529,7 @@
     state.fallbackGeneration += 1;
     state.fallbackActive = false;
     state.fallbackInFlight = false;
+    state.fallbackFailureCount = 0;
   }
 
   function scheduleFallbackPoll() {
@@ -546,6 +543,7 @@
 
   function startFallbackPolling() {
     if (!state.session || !state.token || !isForeground()) return;
+    if (!state.fallbackActive) state.fallbackFailureCount = 0;
     state.fallbackActive = true;
     pollFallbackSnapshot();
   }
@@ -574,15 +572,19 @@
       state.error = "";
       state.lastFallbackAt = new Date().toISOString();
       state.lastFallbackError = "";
+      state.fallbackFailureCount = 0;
     } catch (error) {
       if (generation !== state.fallbackGeneration || !state.fallbackActive) return;
       state.lastFallbackError = String(error?.message || "Fallback update failed");
+      state.fallbackFailureCount += 1;
       if (fallbackIsFresh()) {
         state.phase = "fallback";
         state.error = "";
       } else if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
         state.phase = "connecting";
-        state.error = `Live connection and compatible fallback failed: ${state.lastFallbackError}`;
+        state.error = state.fallbackFailureCount >= 3
+          ? `Live connection and compatible fallback failed: ${state.lastFallbackError}`
+          : "";
       }
       scheduleRender();
     } finally {
@@ -643,7 +645,6 @@
         if (socket.readyState === WebSocket.OPEN) return;
         recoverFailedSocket(
           socket,
-          "Live connection timed out. Retrying automatically.",
           "Handshake timed out"
         );
       }, SOCKET_CONNECT_TIMEOUT_MS);
@@ -666,7 +667,6 @@
           if (socket !== state.socket || socket.readyState < WebSocket.CLOSING) return;
           recoverFailedSocket(
             socket,
-            "Live connection was rejected. Retrying automatically.",
             "Handshake rejected"
           );
         }, 0);
@@ -685,26 +685,33 @@
           scheduleRender();
           return;
         }
+        const hasFreshFallback = fallbackIsFresh();
         if (event.code === 1008) {
           state.token = "";
           state.session = null;
           state.error = "Live authorization expired. Reconnecting.";
         } else if (typeof navigator !== "undefined" && navigator.onLine === false) {
           state.error = "Device is offline. Live updates will resume automatically.";
-        } else if (state.reconnectAttempt >= 2) {
+        } else if (!hasFreshFallback && state.reconnectAttempt >= 2) {
           state.error = `Live connection interrupted (code ${event.code || 1006}). Retrying automatically.`;
+        } else {
+          state.error = "";
         }
-        state.phase = fallbackIsFresh() ? "fallback" : "connecting";
+        state.phase = hasFreshFallback ? "fallback" : "connecting";
         if (state.token && state.session) startFallbackPolling();
         scheduleRender();
         scheduleReconnect();
       });
     } catch (error) {
-      if (fallbackIsFresh()) {
+      if (state.phase === "error" && state.error) {
+        // Keep authentication and permission failures visible.
+      } else if (fallbackIsFresh()) {
         state.phase = "fallback";
         state.error = "";
-      } else if (!state.error) {
-        state.error = String(error?.message || "Could not start the live connection");
+      } else {
+        state.phase = "connecting";
+        state.error = "";
+        if (state.token && state.session) startFallbackPolling();
       }
       scheduleRender();
       scheduleReconnect();

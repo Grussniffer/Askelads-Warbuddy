@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.18
+// @version      0.1.19
 // @description  Shows a war action queue, personal watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
