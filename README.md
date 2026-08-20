@@ -1,10 +1,10 @@
 # Askelads Warbuddy
 
-## 0.1.17
+## 0.1.18
 
-- Lets each player choose up to 25 personal watched enemies inside Warbuddy.
-- Synchronizes that private list with the website action queue through the verified player session.
-- Removes faction-admin control over another player's watched targets.
+- Refreshes compatible-mode snapshots every two seconds while the panel is expanded.
+- Pauses the WebSocket, compatible polling, and countdown ticker while Warbuddy is collapsed.
+- Reconnects immediately when the panel is expanded again.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -32,7 +32,7 @@ Warbuddy displays information and links only. It does not attack, click, submit,
 - The Torn API key is stored locally by the userscript manager.
 - The key is used to identify the player and faction, then exchanged for a six-hour, faction-scoped companion session.
 - The key is not saved to the backend during that exchange.
-- Warbuddy connects only while a Torn faction tab is visible and the device is online.
+- Warbuddy connects only while its panel is expanded on a visible Torn faction tab and the device is online.
 - Its backend session can read War Tracker settings, rosters, score, and retaliation for the verified faction, and save only that player's watched-target list.
 - Other players' watched-target lists are never returned to the script.
 - WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached scoped snapshot without making extra Torn API calls.
@@ -58,6 +58,12 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.18 - 20 August 2026
+
+- Reduces the visible compatible-mode snapshot interval from five seconds to two seconds.
+- Collapsing Warbuddy now pauses its socket, fallback polling, and live countdown; expanding it resumes immediately.
+- Native WebSocket updates remain immediate and no additional Torn API calls are introduced.
 
 ### 0.1.17 - 20 August 2026
 

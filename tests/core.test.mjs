@@ -285,7 +285,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.17"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.18"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -396,7 +396,7 @@ describe("War Companion panel state", () => {
   it("falls back to a scoped HTTP snapshot when native WebSockets are rejected", async () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
-    assert.ok(source.includes("const FALLBACK_POLL_MS = 5_000"));
+    assert.ok(source.includes("const FALLBACK_POLL_MS = 2_000"));
     assert.ok(source.includes("const FALLBACK_SOCKET_RETRY_MS = 60_000"));
     assert.ok(source.includes("/war-companion/snapshot?timestamp="));
     assert.ok(source.includes("headers: { Authorization: `Bearer ${state.token}` }"));
@@ -410,6 +410,15 @@ describe("War Companion panel state", () => {
 
     assert.ok(source.includes('socket.addEventListener("close", (event) => {\n        if (socket !== state.socket) return;'));
     assert.doesNotMatch(source, /socketClosing/);
+  });
+
+  it("pauses all live work while the panel is collapsed", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes("const isForeground = () => state.active\n    && !state.collapsed"));
+    assert.ok(source.includes('title="${state.collapsed ? "Expand and resume" : "Collapse and pause"}"'));
+    assert.ok(source.includes('storage.set(COLLAPSED_STORAGE, state.collapsed ? "1" : "0");\n      syncForegroundState();'));
+    assert.ok(source.includes('state.collapsed ? "Paused" : "Paused while hidden"'));
   });
 });
 

@@ -5,14 +5,14 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.17";
+  const SCRIPT_VERSION = "0.1.18";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
   const POSITION_STORAGE = "lads_war_companion_position";
   const REQUEST_TIMEOUT_MS = 30_000;
   const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
-  const FALLBACK_POLL_MS = 5_000;
+  const FALLBACK_POLL_MS = 2_000;
   const FALLBACK_SOCKET_RETRY_MS = 60_000;
   const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function";
   const PANEL_EDGE_GAP = 8;
@@ -231,6 +231,7 @@
     state.targetError = "";
   };
   const isForeground = () => state.active
+    && !state.collapsed
     && document.visibilityState !== "hidden"
     && (typeof navigator === "undefined" || navigator.onLine !== false);
   const backendUrl = (path) => `${BACKEND_BASE_URL.replace(/\/$/, "")}${path}`;
@@ -765,7 +766,7 @@
     if (!getStoredKey()) return { label: "API key needed", tone: "" };
     if (state.phase === "connected") return { label: "Live", tone: "live" };
     if (state.phase === "fallback") return { label: "Live (compatible)", tone: "live" };
-    if (state.phase === "paused") return { label: "Paused while hidden", tone: "" };
+    if (state.phase === "paused") return { label: state.collapsed ? "Paused" : "Paused while hidden", tone: "" };
     if (state.phase === "error") return { label: "Connection error", tone: "wait" };
     if (state.phase === "authenticating") return { label: "Checking key", tone: "wait" };
     return { label: "Connecting", tone: "wait" };
@@ -903,7 +904,7 @@
 
     panel.innerHTML = `<div class="wc-header">
       <div class="wc-heading"><div class="wc-title-row"><span class="wc-player">${escapeHtml(state.session?.playerName || "War Companion")}</span><span class="wc-version">v${SCRIPT_VERSION}</span><span class="wc-header-status"><span class="wc-dot ${status.tone}"></span>${escapeHtml(status.label)}</span></div>${matchupLabel ? `<div class="wc-matchup" title="${escapeHtml(matchupTitle)}">${escapeHtml(matchupLabel)}</div>` : ""}</div>
-      <button class="wc-button wc-icon" data-action="collapse" title="${state.collapsed ? "Expand" : "Collapse"}">${state.collapsed ? "+" : "-"}</button>
+      <button class="wc-button wc-icon" data-action="collapse" title="${state.collapsed ? "Expand and resume" : "Collapse and pause"}">${state.collapsed ? "+" : "-"}</button>
     </div>
     <div class="wc-body">
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
@@ -933,6 +934,7 @@
     panel.querySelector('[data-action="collapse"]')?.addEventListener("click", () => {
       state.collapsed = !state.collapsed;
       storage.set(COLLAPSED_STORAGE, state.collapsed ? "1" : "0");
+      syncForegroundState();
       scheduleRender();
     });
     panel.querySelector('[data-action="connect"]')?.addEventListener("click", connectFromInput);
