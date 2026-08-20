@@ -1,9 +1,9 @@
 # Askelads Warbuddy
 
-## 0.1.24
+## 0.1.25
 
-- Releasing Dibs also removes that target from your saved watch list.
-- Preserves every other saved target and any other unsaved picker changes.
+- Hides Dibs when the faction admin disables shared claims.
+- Active claims are cleared by the backend while personal watched targets remain available.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -58,6 +58,12 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.25 - 20 August 2026
+
+- Honors the faction-wide Shared Dibs switch from the War Tracker Control Panel.
+- Removes the hand, clears local claim state, and blocks stale client actions while disabled.
+- Keeps personal watched targets and the rest of the action queue independent.
 
 ### 0.1.24 - 20 August 2026
 

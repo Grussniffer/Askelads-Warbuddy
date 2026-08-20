@@ -120,6 +120,10 @@
       && toTimestampMs(claim?.expiresAt) > nowMs
     ));
 
+  const dibsFeatureEnabled = (settings) => (
+    settings?.enabled !== false && settings?.dibsEnabled !== false
+  );
+
   const scoreForFaction = (scores, factionId) => {
     if (scores instanceof Map) return scores.get(String(factionId));
     return Object.values(scores || {}).find((score) => String(score?.factionId || score?.faction_id || "") === String(factionId));
@@ -310,6 +314,7 @@
     attackUrl,
     buildActionQueue,
     dibsEligibility,
+    dibsFeatureEnabled,
     duration,
     formatBsp,
     inferEnemyFactionId,

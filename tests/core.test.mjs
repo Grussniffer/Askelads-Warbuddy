@@ -311,6 +311,13 @@ describe("War Companion live state", () => {
     assert.equal(core.activeDibsClaim(payload, 102, nowMs), undefined);
     assert.equal(core.activeDibsClaim(payload, 103, nowMs), undefined);
   });
+
+  it("defaults Dibs on and honors either faction-level disable switch", () => {
+    assert.equal(core.dibsFeatureEnabled(undefined), true);
+    assert.equal(core.dibsFeatureEnabled({ enabled: true, dibsEnabled: true }), true);
+    assert.equal(core.dibsFeatureEnabled({ enabled: true, dibsEnabled: false }), false);
+    assert.equal(core.dibsFeatureEnabled({ enabled: false, dibsEnabled: true }), false);
+  });
 });
 
 describe("War Companion panel state", () => {
@@ -333,7 +340,8 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.24"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.25"'));
+    assert.ok(source.includes('if (!core.dibsFeatureEnabled(state.settings)) return ""'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.24
+// @version      0.1.25
 // @description  Shows a war action queue, shared target Dibs, watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -146,6 +146,10 @@
       Number(claim?.targetMemberId || 0) === Number(targetMemberId || 0)
       && toTimestampMs(claim?.expiresAt) > nowMs
     ));
+
+  const dibsFeatureEnabled = (settings) => (
+    settings?.enabled !== false && settings?.dibsEnabled !== false
+  );
 
   const scoreForFaction = (scores, factionId) => {
     if (scores instanceof Map) return scores.get(String(factionId));
@@ -337,6 +341,7 @@
     attackUrl,
     buildActionQueue,
     dibsEligibility,
+    dibsFeatureEnabled,
     duration,
     formatBsp,
     inferEnemyFactionId,
@@ -354,7 +359,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.24";
+  const SCRIPT_VERSION = "0.1.25";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -834,6 +839,11 @@
   function applyEvent(topic, payload) {
     if (topic === "war_tracker_settings") {
       state.settings = payload || null;
+      if (!core.dibsFeatureEnabled(state.settings)) {
+        state.dibs = { claims: [] };
+        state.dibsInspectTargetId = 0;
+        state.dibsError = "";
+      }
       syncTargetDraft();
     }
     if (topic === "war_tracker") {
@@ -854,7 +864,9 @@
       }
     }
     if (topic === "retaliation") state.retaliation = payload || { attacks: [] };
-    if (topic === "war_dibs") state.dibs = payload || { claims: [] };
+    if (topic === "war_dibs") {
+      state.dibs = core.dibsFeatureEnabled(state.settings) ? payload || { claims: [] } : { claims: [] };
+    }
     scheduleRender();
   }
 
@@ -886,7 +898,7 @@
     state.factionNames = factionNames;
     state.scores = scores;
     state.retaliation = snapshot?.retaliation || { attacks: [] };
-    state.dibs = snapshot?.dibs || { claims: [] };
+    state.dibs = core.dibsFeatureEnabled(state.settings) ? snapshot?.dibs || { claims: [] } : { claims: [] };
     scheduleRender();
   }
 
@@ -1151,7 +1163,7 @@
   };
 
   function dibsMarkup(member, view) {
-    if (state.settings?.enabled === false) return "";
+    if (!core.dibsFeatureEnabled(state.settings)) return "";
     const memberId = Number(member?.member_id || 0);
     if (!Number.isSafeInteger(memberId) || memberId <= 0) return "";
     const claim = core.activeDibsClaim(view.dibs, memberId, state.nowMs);
@@ -1270,7 +1282,7 @@
 
   async function updateDibs(action, targetMemberId) {
     const memberId = Number(targetMemberId || 0);
-    if (state.dibsBusyTargetId || !Number.isSafeInteger(memberId) || memberId <= 0) return;
+    if (!core.dibsFeatureEnabled(state.settings) || state.dibsBusyTargetId || !Number.isSafeInteger(memberId) || memberId <= 0) return;
     state.dibsBusyTargetId = memberId;
     state.dibsError = "";
     scheduleRender();
