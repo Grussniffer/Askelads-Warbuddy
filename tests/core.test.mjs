@@ -320,7 +320,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.22"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.23"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -396,6 +396,8 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes('JSON.stringify({ action, targetMemberId: memberId })'));
     assert.ok(source.includes('data-dibs-action="claim"') || source.includes('const action = claim ? "inspect" : "claim"'));
     assert.ok(source.includes('data-dibs-action="release"'));
+    assert.ok(source.includes("wc-action-section .wc-dibs-tip"));
+    assert.ok(source.includes("top:calc(100% + 4px); bottom:auto"));
     assert.ok(source.includes('width:16px; height:16px'));
     assert.doesNotMatch(source, /api\.torn\.com[^\n]*dibs/i);
   });

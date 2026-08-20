@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.22
+// @version      0.1.23
 // @description  Shows a war action queue, shared target Dibs, watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -354,7 +354,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.22";
+  const SCRIPT_VERSION = "0.1.23";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -489,6 +489,10 @@
     #${PANEL_ID} .wc-dibs.taken { color:#f59e0b; }
     #${PANEL_ID} .wc-dibs:disabled { opacity:.45; cursor:wait; }
     #${PANEL_ID} .wc-dibs-tip { position:absolute; right:0; bottom:calc(100% + 4px); z-index:3; display:none; width:max-content; max-width:min(190px,calc(100vw - 28px)); border:1px solid #3f3f46; border-radius:4px; background:#09090b; color:#e4e4e7; padding:4px 5px; box-shadow:0 6px 18px rgba(0,0,0,.45); font-size:10px; white-space:normal; }
+    #${PANEL_ID} .wc-action-section { overflow:visible; }
+    #${PANEL_ID} .wc-action-section .wc-section-title { border-radius:4px 4px 0 0; }
+    #${PANEL_ID} .wc-action-section .wc-item:last-child { border-radius:0 0 4px 4px; }
+    #${PANEL_ID} .wc-action-section .wc-dibs-tip { top:calc(100% + 4px); bottom:auto; font-size:11px; line-height:1.3; }
     #${PANEL_ID} .wc-dibs-wrap:hover .wc-dibs-tip, #${PANEL_ID} .wc-dibs-wrap:focus-within .wc-dibs-tip, #${PANEL_ID} .wc-dibs-wrap.open .wc-dibs-tip { display:block; }
     #${PANEL_ID} .wc-dibs-release { display:block; width:100%; margin-top:4px; border:1px solid #3f3f46; border-radius:3px; background:#27272a; color:#f4f4f5; padding:3px 5px; font:inherit; font-weight:700; cursor:pointer; }
     #${PANEL_ID} .wc-row { display:flex; gap:5px; margin-top:6px; }
@@ -1352,7 +1356,7 @@
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
       ${state.dibsError ? `<div class="wc-error">${escapeHtml(state.dibsError)}</div>` : ""}
       ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key" value="${escapeHtml(state.keyDraft)}"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
-      ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}` : ""}
+      ${savedKey ? `<div class="wc-section wc-action-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}` : ""}
       ${watchedTargetsSection}
       <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it to verify your profile and faction; the scoped session can read war data and save only your watched-target list.</div>${savedKey ? `<div class="wc-private-actions"><button class="wc-button" data-action="refresh">Reconnect</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}</details>
     </div>`;

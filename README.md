@@ -1,9 +1,9 @@
 # Askelads Warbuddy
 
-## 0.1.22
+## 0.1.23
 
-- Adds shared target Dibs to Warbuddy and the website War Tracker.
-- Keeps the hand control inside existing target rows and enables Warbuddy on Torn's attack page.
+- Opens the top Action Queue Dibs detail below its marker so the text is not clipped by the section heading.
+- Keeps the marker, target row, watched-target list, and mobile panel dimensions unchanged.
 
 Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -58,6 +58,11 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.23 - 20 August 2026
+
+- Moves the Action Queue Dibs detail below the hand marker and increases its small detail text to 11px.
+- Prevents the top-target detail from being clipped while preserving the existing compact mobile layout.
 
 ### 0.1.22 - 20 August 2026
 
