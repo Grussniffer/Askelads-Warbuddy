@@ -1,10 +1,9 @@
 # Askelads Warbuddy
 
-## 0.1.14
+## 0.1.15
 
-- Supports Torn PDA's authenticated HTTP bridge when its native WebSocket is unavailable.
-- Keeps the bearer token on PDA snapshot requests so the panel remains live through compatible polling.
-- Starts the compatible feed immediately in Torn PDA instead of waiting for a WebSocket timeout.
+- Pins faction-configured enemy targets when they are about to land in Torn, leave hospital, or are already attackable.
+- Uses the existing live roster stream, so watched targets add no recurring Torn API calls.
 
 Askelads Warbuddy is a read-only Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -21,6 +20,7 @@ The install URL ends in `.user.js` and includes update metadata, so supported us
 
 - Current chain-risk and hospital-exit opportunities from the faction War Tracker.
 - Online enemy targets when they are relevant to the action queue.
+- Faction-configured watched enemies within one minute of landing or leaving hospital, and while attackable in Torn.
 - Active retaliation windows with explicit links to Torn.
 - A stable empty state when there are no immediate actions.
 
@@ -56,6 +56,12 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.15 - 20 August 2026
+
+- Adds faction-scoped watched enemy targets selected by an admin in the War Tracker Control Panel.
+- Pins watched targets in the action queue within one minute of landing in Torn or leaving hospital, and while they are attackable in Torn.
+- Reuses the live roster stream without additional recurring Torn API requests.
 
 ### 0.1.14 - 20 August 2026
 

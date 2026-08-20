@@ -9,6 +9,7 @@
   const URGENT_HOSPITAL_MS = 3 * 60 * 1000;
   const CHAIN_WINDOW_MS = 5 * 60 * 1000;
   const URGENT_CHAIN_MS = 2 * 60 * 1000;
+  const WATCHED_TARGET_WINDOW_MS = 60 * 1000;
 
   const toTimestampMs = (value) => {
     const numeric = Number(value || 0);
@@ -54,6 +55,15 @@
     String(member?.location?.current || member?.location?.name || member?.location || "").toLowerCase();
 
   const memberActivity = (member) => String(member?.activity || "").toLowerCase();
+
+  const memberDestination = (member) =>
+    String(member?.location?.destination || member?.destination || "").toLowerCase();
+
+  const normalizeMemberIds = (value) => new Set(
+    (Array.isArray(value) ? value : [])
+      .map((memberId) => Number(memberId))
+      .filter((memberId) => Number.isSafeInteger(memberId) && memberId > 0)
+  );
 
   const scoreForFaction = (scores, factionId) => {
     if (scores instanceof Map) return scores.get(String(factionId));
@@ -104,8 +114,17 @@
     };
   };
 
-  const buildActionQueue = ({ enemies = [], alliedScore, ownBsp = 0, nowMs = Date.now() }) => {
+  const buildActionQueue = ({
+    enemies = [],
+    alliedScore,
+    ownBsp = 0,
+    watchedEnemyMemberIds = [],
+    nowMs = Date.now(),
+  }) => {
     const result = [];
+    const watchedActions = [];
+    const watchedIds = normalizeMemberIds(watchedEnemyMemberIds);
+    const activeWatchedIds = new Set();
     const chainEndsAt = toTimestampMs(alliedScore?.chain_timer);
     const chainRemaining = chainEndsAt - nowMs;
     if (Number(alliedScore?.chain || 0) >= 10 && chainRemaining > 0 && chainRemaining <= CHAIN_WINDOW_MS) {
@@ -119,6 +138,62 @@
     }
 
     for (const member of enemies) {
+      const memberId = Number(member?.member_id || 0);
+      if (!watchedIds.has(memberId)) continue;
+      const status = memberStatus(member);
+      const until = toTimestampMs(member?.status?.untill || member?.status?.until);
+      const remaining = until - nowMs;
+      const bsp = member.bsp ? `${formatBsp(member.bsp)} BSP` : "BSP unknown";
+
+      if (
+        status === "traveling"
+        && memberDestination(member) === "torn"
+        && remaining > 0
+        && remaining <= WATCHED_TARGET_WINDOW_MS
+      ) {
+        activeWatchedIds.add(memberId);
+        watchedActions.push({
+          key: `watched-flight-${memberId}`,
+          severity: "urgent",
+          title: `${member.member_name} lands in Torn`,
+          detail: `${duration(remaining)} - watched - ${bsp}`,
+          actionLabel: "Open",
+          url: attackUrl(memberId),
+          order: until,
+        });
+        continue;
+      }
+
+      if (status === "hospital" && remaining > 0 && remaining <= WATCHED_TARGET_WINDOW_MS) {
+        activeWatchedIds.add(memberId);
+        watchedActions.push({
+          key: `watched-hospital-${memberId}`,
+          severity: "urgent",
+          title: `${member.member_name} leaves hospital`,
+          detail: `${duration(remaining)} - watched - ${bsp}`,
+          actionLabel: "Open",
+          url: attackUrl(memberId),
+          order: until,
+        });
+        continue;
+      }
+
+      if (status === "okay" && memberLocation(member) === "torn") {
+        activeWatchedIds.add(memberId);
+        watchedActions.push({
+          key: `watched-ready-${memberId}`,
+          severity: "urgent",
+          title: `${member.member_name} is attackable now`,
+          detail: `Watched target - ${bsp}`,
+          actionLabel: "Attack",
+          url: attackUrl(memberId),
+          order: nowMs,
+        });
+      }
+    }
+
+    for (const member of enemies) {
+      if (activeWatchedIds.has(Number(member?.member_id || 0))) continue;
       if (memberStatus(member) !== "hospital") continue;
       const until = toTimestampMs(member?.status?.untill || member?.status?.until);
       const remaining = until - nowMs;
@@ -136,6 +211,7 @@
 
     const numericOwnBsp = Number(ownBsp || 0);
     const onlineTargets = enemies
+      .filter((member) => !activeWatchedIds.has(Number(member?.member_id || 0)))
       .filter((member) => memberActivity(member) === "online" && memberStatus(member) === "okay")
       .filter((member) => memberLocation(member) === "torn")
       .filter((member) => !numericOwnBsp || !member.bsp || Number(member.bsp) <= numericOwnBsp * 1.25)
@@ -154,9 +230,11 @@
     }
 
     const severityRank = { urgent: 0, watch: 1, info: 2 };
-    return result
-      .sort((a, b) => severityRank[a.severity] - severityRank[b.severity] || a.order - b.order)
-      .slice(0, 9);
+    const byPriority = (a, b) => severityRank[a.severity] - severityRank[b.severity] || a.order - b.order;
+    const chainActions = result.filter((item) => item.key === "chain-risk").sort(byPriority);
+    const ordinaryActions = result.filter((item) => item.key !== "chain-risk").sort(byPriority);
+    const pinnedActions = [...chainActions, ...watchedActions.sort(byPriority)];
+    return [...pinnedActions, ...ordinaryActions.slice(0, Math.max(0, 9 - pinnedActions.length))];
   };
 
   const activeRetaliations = (payload, nowSeconds = Math.floor(Date.now() / 1000)) =>

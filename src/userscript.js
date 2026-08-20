@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.14";
+  const SCRIPT_VERSION = "0.1.15";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -716,6 +716,7 @@
       enemies: enemyRoster,
       alliedScore,
       ownBsp: ownMember?.bsp || 0,
+      watchedEnemyMemberIds: state.settings?.watchedEnemyMemberIds || [],
       nowMs: state.nowMs,
     });
     const retaliation = core.activeRetaliations(state.retaliation, Math.floor(state.nowMs / 1000));

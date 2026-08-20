@@ -131,6 +131,96 @@ describe("War Companion action queue", () => {
   it("keeps the queue empty when no action is useful", () => {
     assert.deepEqual(core.buildActionQueue({ enemies: [], alliedScore: { chain: 2 } }), []);
   });
+
+  it("pins watched targets near landing, near hospital release, and while attackable", () => {
+    const nowMs = 2_000_000_000_000;
+    const enemies = [
+      {
+        member_id: 201,
+        member_name: "Landing",
+        activity: "Offline",
+        status: { userStatus: "Traveling", untill: nowMs + 45_000 },
+        location: { current: "Switzerland", destination: "Torn" },
+      },
+      {
+        member_id: 202,
+        member_name: "Hospital",
+        activity: "Offline",
+        status: { userStatus: "Hospital", untill: nowMs + 30_000 },
+        location: { current: "Torn" },
+      },
+      {
+        member_id: 203,
+        member_name: "Ready",
+        activity: "Offline",
+        status: { userStatus: "Okay" },
+        location: { current: "Torn" },
+      },
+      {
+        member_id: 204,
+        member_name: "Not watched",
+        activity: "Offline",
+        status: { userStatus: "Okay" },
+        location: { current: "Torn" },
+      },
+    ];
+
+    const items = core.buildActionQueue({
+      enemies,
+      watchedEnemyMemberIds: [201, 202, 203],
+      nowMs,
+    });
+
+    assert.deepEqual(items.map((item) => item.key), [
+      "watched-ready-203",
+      "watched-hospital-202",
+      "watched-flight-201",
+    ]);
+    assert.ok(items.every((item) => item.severity === "urgent"));
+  });
+
+  it("does not announce watched travel until the member is landing in Torn within one minute", () => {
+    const nowMs = 2_000_000_000_000;
+    const baseMember = {
+      member_id: 301,
+      member_name: "Traveler",
+      activity: "Offline",
+      status: { userStatus: "Traveling", untill: nowMs + 30_000 },
+      location: { current: "Torn", destination: "Mexico" },
+    };
+
+    assert.deepEqual(core.buildActionQueue({
+      enemies: [baseMember],
+      watchedEnemyMemberIds: [301],
+      nowMs,
+    }), []);
+    assert.deepEqual(core.buildActionQueue({
+      enemies: [{
+        ...baseMember,
+        status: { ...baseMember.status, untill: nowMs + 61_000 },
+        location: { current: "Switzerland", destination: "Torn" },
+      }],
+      watchedEnemyMemberIds: [301],
+      nowMs,
+    }), []);
+  });
+
+  it("preserves the ordinary hospital warning before a watched target enters the one-minute window", () => {
+    const nowMs = 2_000_000_000_000;
+    const items = core.buildActionQueue({
+      watchedEnemyMemberIds: [401],
+      nowMs,
+      enemies: [{
+        member_id: 401,
+        member_name: "Still waiting",
+        activity: "Offline",
+        status: { userStatus: "Hospital", untill: nowMs + 5 * 60_000 },
+        location: { current: "Torn" },
+      }],
+    });
+
+    assert.deepEqual(items.map((item) => item.key), ["hospital-401"]);
+  });
 });
 
 describe("War Companion live state", () => {
@@ -195,7 +285,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.14"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.15"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
