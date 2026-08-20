@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.16
-// @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
+// @version      0.1.17
+// @description  Shows a war action queue, personal watched targets, and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
 // @supportURL   https://github.com/Grussniffer/Askelads-Warbuddy/issues
@@ -288,7 +288,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.16";
+  const SCRIPT_VERSION = "0.1.17";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -299,6 +299,7 @@
   const FALLBACK_SOCKET_RETRY_MS = 60_000;
   const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function";
   const PANEL_EDGE_GAP = 8;
+  const MAX_WATCHED_TARGETS = 25;
   const TOPICS = ["war_tracker_settings", "war_tracker", "score", "retaliation"];
 
   const storage = {
@@ -345,6 +346,11 @@
     nowMs: Date.now(),
     collapsed: String(storage.get(COLLAPSED_STORAGE, "")) === "1",
     privacyOpen: false,
+    targetsOpen: false,
+    targetDraft: [],
+    targetsDirty: false,
+    targetsSaving: false,
+    targetError: "",
     active: false,
     renderQueued: false,
     dragging: false,
@@ -408,9 +414,19 @@
     #${PANEL_ID} .wc-button, #${PANEL_ID} .wc-link { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; border:1px solid #3f3f46; border-radius:5px; background:#27272a; color:#f4f4f5; padding:5px 7px; text-decoration:none; font:inherit; font-weight:700; cursor:pointer; }
     #${PANEL_ID} .wc-button:hover, #${PANEL_ID} .wc-link:hover { background:#3f3f46; }
     #${PANEL_ID} .wc-button.primary, #${PANEL_ID} .wc-link.primary { border-color:#065f46; background:#064e3b; color:#d1fae5; }
+    #${PANEL_ID} .wc-button:disabled { opacity:.45; cursor:default; }
     #${PANEL_ID} .wc-icon { width:22px; height:22px; padding:0; }
     #${PANEL_ID} details { margin-top:6px; border:1px solid #27272a; border-radius:5px; color:#a1a1aa; }
     #${PANEL_ID} summary { cursor:pointer; padding:5px 6px; color:#d4d4d8; font-weight:700; }
+    #${PANEL_ID} .wc-summary-count { float:right; color:#a1a1aa; font-size:10px; font-weight:400; }
+    #${PANEL_ID} .wc-target-note { padding:0 6px 5px; color:#a1a1aa; font-size:10px; }
+    #${PANEL_ID} .wc-target-list { max-height:180px; overflow:auto; border-top:1px solid #27272a; }
+    #${PANEL_ID} .wc-target-option { display:flex; align-items:center; gap:6px; min-height:30px; padding:4px 6px; border-top:1px solid #27272a; color:#e4e4e7; cursor:pointer; }
+    #${PANEL_ID} .wc-target-option:first-child { border-top:0; }
+    #${PANEL_ID} .wc-target-option input { width:14px; height:14px; flex:0 0 auto; margin:0; accent-color:#10b981; }
+    #${PANEL_ID} .wc-target-option span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    #${PANEL_ID} .wc-target-actions { display:flex; align-items:center; justify-content:flex-end; gap:6px; padding:6px; border-top:1px solid #27272a; }
+    #${PANEL_ID} .wc-target-error { flex:1; color:#fca5a5; font-size:10px; }
     #${PANEL_ID} .wc-privacy { padding:0 6px 6px; }
     #${PANEL_ID} .wc-private-actions { display:flex; gap:5px; padding:0 6px 6px; }
     @media (max-width:520px) { #${PANEL_ID} { right:6px; bottom:6px; width:calc(100vw - 12px); max-height:58vh; } #${PANEL_ID} .wc-body { max-height:calc(58vh - 42px); } }
@@ -479,6 +495,24 @@
   });
 
   const getStoredKey = () => String(storage.get(KEY_STORAGE, "") || "").trim();
+  const normalizeTargetIds = (value) => Array.from(new Set(
+    (Array.isArray(value) ? value : [])
+      .map((memberId) => Number(memberId))
+      .filter((memberId) => Number.isSafeInteger(memberId) && memberId > 0)
+  )).slice(0, MAX_WATCHED_TARGETS);
+  const savedTargetIds = () => normalizeTargetIds(state.settings?.watchedEnemyMemberIds);
+  const syncTargetDraft = () => {
+    if (state.targetsOpen || state.targetsDirty) return;
+    state.targetDraft = savedTargetIds();
+    state.targetError = "";
+  };
+  const resetPersonalTargets = () => {
+    state.targetsOpen = false;
+    state.targetDraft = [];
+    state.targetsDirty = false;
+    state.targetsSaving = false;
+    state.targetError = "";
+  };
   const isForeground = () => state.active
     && document.visibilityState !== "hidden"
     && (typeof navigator === "undefined" || navigator.onLine !== false);
@@ -715,7 +749,10 @@
   }
 
   function applyEvent(topic, payload) {
-    if (topic === "war_tracker_settings") state.settings = payload || null;
+    if (topic === "war_tracker_settings") {
+      state.settings = payload || null;
+      syncTargetDraft();
+    }
     if (topic === "war_tracker") {
       const factionId = String(payload?.factionId || payload?.faction_id || "");
       if (factionId) {
@@ -739,6 +776,7 @@
 
   function applyFallbackSnapshot(snapshot) {
     state.settings = snapshot?.settings || null;
+    syncTargetDraft();
     const factionNames = new Map();
     const ownFactionId = String(state.session?.factionId || "");
     const ownFactionName = String(state.session?.factionName || "").trim();
@@ -1003,7 +1041,7 @@
       nowMs: state.nowMs,
     });
     const retaliation = core.activeRetaliations(state.retaliation, Math.floor(state.nowMs / 1000));
-    return { ownFactionId, ownFactionName, enemyFactionId, enemyFactionName, actions, retaliation };
+    return { ownFactionId, ownFactionName, enemyFactionId, enemyFactionName, enemyRoster, actions, retaliation };
   }
 
   const statusView = () => {
@@ -1032,6 +1070,60 @@
     </div>`;
   }
 
+  function watchedTargetOptions(view, selectedIds) {
+    const selected = new Set(selectedIds);
+    const options = new Map();
+    for (const member of view.enemyRoster || []) {
+      const memberId = Number(member?.member_id || 0);
+      if (!Number.isSafeInteger(memberId) || memberId <= 0) continue;
+      options.set(memberId, {
+        memberId,
+        name: String(member?.member_name || `Player ${memberId}`),
+        current: true,
+      });
+    }
+    for (const memberId of selectedIds) {
+      if (!options.has(memberId)) options.set(memberId, { memberId, name: `Player ${memberId}`, current: false });
+    }
+    return Array.from(options.values()).sort((left, right) => (
+      Number(selected.has(right.memberId)) - Number(selected.has(left.memberId))
+      || left.name.localeCompare(right.name)
+    ));
+  }
+
+  async function saveWatchedTargets() {
+    if (state.targetsSaving || !state.targetsDirty) return;
+    state.targetsSaving = true;
+    state.targetError = "";
+    scheduleRender();
+    try {
+      const expiresAt = Date.parse(String(state.session?.wsSessionTokenExpiresAt || state.session?.expiresAt || ""));
+      if (!state.token || !Number.isFinite(expiresAt) || expiresAt <= Date.now() + 30_000) await authenticate();
+      const factionId = String(state.session?.factionId || "");
+      if (!factionId || !state.token) throw new Error("Companion session is unavailable");
+      const response = await requestJson({
+        method: "POST",
+        url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/watched-targets`),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${state.token}`,
+        },
+        data: JSON.stringify({ memberIds: normalizeTargetIds(state.targetDraft) }),
+        label: "Watched targets",
+      });
+      const memberIds = normalizeTargetIds(response?.watchedEnemyMemberIds);
+      state.settings = { ...(state.settings || {}), watchedEnemyMemberIds: memberIds };
+      state.targetDraft = memberIds;
+      state.targetsDirty = false;
+      state.targetsOpen = false;
+    } catch (error) {
+      state.targetError = String(error?.message || "Could not save watched targets");
+    } finally {
+      state.targetsSaving = false;
+      scheduleRender();
+    }
+  }
+
   function render() {
     state.renderQueued = false;
     if (state.dragging) return;
@@ -1051,6 +1143,8 @@
     const bodyScrollTop = Number(currentBody?.scrollTop || 0);
     const privacyDisclosure = panel.querySelector('[data-section="privacy"]');
     if (privacyDisclosure) state.privacyOpen = privacyDisclosure.open;
+    const targetsDisclosure = panel.querySelector('[data-section="targets"]');
+    if (targetsDisclosure) state.targetsOpen = targetsDisclosure.open;
     panel.classList.toggle("wc-collapsed", state.collapsed);
     const status = statusView();
     const view = sessionView();
@@ -1075,6 +1169,20 @@
     const matchupTitle = view.enemyFactionId
       ? `${ownFactionLabel} (${view.ownFactionId}) vs ${enemyFactionLabel} (${view.enemyFactionId})`
       : ownFactionLabel;
+    const targetIds = state.targetsOpen ? normalizeTargetIds(state.targetDraft) : savedTargetIds();
+    const targetIdSet = new Set(targetIds);
+    const targetOptions = watchedTargetOptions(view, targetIds);
+    const targetOptionsMarkup = targetOptions.length
+      ? `<div class="wc-target-list">${targetOptions.map((option) => {
+          const checked = targetIdSet.has(option.memberId);
+          const disabled = !checked && targetIds.length >= MAX_WATCHED_TARGETS;
+          const label = option.current ? option.name : `${option.name} (not in current roster)`;
+          return `<label class="wc-target-option" title="${escapeHtml(label)}"><input type="checkbox" data-target-id="${option.memberId}"${checked ? " checked" : ""}${disabled ? " disabled" : ""}><span>${escapeHtml(label)}</span></label>`;
+        }).join("")}</div>`
+      : `<div class="wc-empty">No current enemy roster.</div>`;
+    const watchedTargetsSection = savedKey
+      ? `<details data-section="targets"${state.targetsOpen ? " open" : ""}><summary>Watched targets <span class="wc-summary-count">${targetIds.length}/${MAX_WATCHED_TARGETS}</span></summary><div class="wc-target-note">Personal targets pinned near landing, hospital release, and while attackable.</div>${targetOptionsMarkup}<div class="wc-target-actions">${state.targetError ? `<span class="wc-target-error">${escapeHtml(state.targetError)}</span>` : ""}<button class="wc-button primary" data-action="save-targets"${!state.targetsDirty || state.targetsSaving ? " disabled" : ""}>${state.targetsSaving ? "Saving" : "Save"}</button></div></details>`
+      : "";
 
     panel.innerHTML = `<div class="wc-header">
       <div class="wc-heading"><div class="wc-title-row"><span class="wc-player">${escapeHtml(state.session?.playerName || "War Companion")}</span><span class="wc-version">v${SCRIPT_VERSION}</span><span class="wc-header-status"><span class="wc-dot ${status.tone}"></span>${escapeHtml(status.label)}</span></div>${matchupLabel ? `<div class="wc-matchup" title="${escapeHtml(matchupTitle)}">${escapeHtml(matchupLabel)}</div>` : ""}</div>
@@ -1084,13 +1192,23 @@
       ${state.error ? `<div class="wc-error">${escapeHtml(state.error)}</div>` : ""}
       ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key" value="${escapeHtml(state.keyDraft)}"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
       ${savedKey ? `<div class="wc-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}` : ""}
-      <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it only to verify your profile and faction; the companion session is read-only.</div>${savedKey ? `<div class="wc-private-actions"><button class="wc-button" data-action="refresh">Reconnect</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}</details>
+      ${watchedTargetsSection}
+      <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it to verify your profile and faction; the scoped session can read war data and save only your watched-target list.</div>${savedKey ? `<div class="wc-private-actions"><button class="wc-button" data-action="refresh">Reconnect</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}</details>
     </div>`;
 
     const nextBody = panel.querySelector(".wc-body");
     if (nextBody) nextBody.scrollTop = bodyScrollTop;
     panel.querySelector('[data-section="privacy"]')?.addEventListener("toggle", (event) => {
       state.privacyOpen = event.currentTarget.open;
+    });
+    panel.querySelector('[data-section="targets"]')?.addEventListener("toggle", (event) => {
+      const open = event.currentTarget.open;
+      if (open === state.targetsOpen) return;
+      state.targetsOpen = open;
+      state.targetDraft = savedTargetIds();
+      state.targetsDirty = false;
+      state.targetError = "";
+      scheduleRender();
     });
     applyStoredPanelPosition();
     attachPanelDragHandler(panel);
@@ -1101,6 +1219,20 @@
       scheduleRender();
     });
     panel.querySelector('[data-action="connect"]')?.addEventListener("click", connectFromInput);
+    panel.querySelectorAll('[data-target-id]').forEach((input) => {
+      input.addEventListener("change", (event) => {
+        const memberId = Number(event.currentTarget?.dataset?.targetId || 0);
+        if (!Number.isSafeInteger(memberId) || memberId <= 0) return;
+        const next = new Set(normalizeTargetIds(state.targetDraft));
+        if (event.currentTarget.checked && next.size < MAX_WATCHED_TARGETS) next.add(memberId);
+        if (!event.currentTarget.checked) next.delete(memberId);
+        state.targetDraft = Array.from(next);
+        state.targetsDirty = JSON.stringify(normalizeTargetIds(state.targetDraft)) !== JSON.stringify(savedTargetIds());
+        state.targetError = "";
+        scheduleRender();
+      });
+    });
+    panel.querySelector('[data-action="save-targets"]')?.addEventListener("click", saveWatchedTargets);
     const keyInput = panel.querySelector('[data-field="api-key"]');
     keyInput?.addEventListener("input", (event) => {
       state.keyDraft = String(event.currentTarget?.value || "");
@@ -1133,6 +1265,7 @@
       state.scores.clear();
       state.settings = null;
       state.retaliation = { attacks: [] };
+      resetPersonalTargets();
       scheduleRender();
     });
   }
@@ -1145,6 +1278,8 @@
     state.keyDraft = "";
     state.token = "";
     state.session = null;
+    state.settings = null;
+    resetPersonalTargets();
     startTicker();
     ensureConnected();
     scheduleRender();

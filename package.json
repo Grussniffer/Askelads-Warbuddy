@@ -1,8 +1,8 @@
 {
   "name": "askelads-warbuddy",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "private": true,
-  "description": "Read-only Torn war action queue and retaliation userscript.",
+  "description": "Torn war action queue, retaliation, and personal target userscript.",
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test tests/core.test.mjs",

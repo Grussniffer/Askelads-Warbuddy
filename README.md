@@ -1,11 +1,12 @@
 # Askelads Warbuddy
 
-## 0.1.16
+## 0.1.17
 
-- Refreshes the visible Torn PDA-compatible fallback every five seconds instead of every ten seconds.
-- Keeps native WebSocket delivery immediate and does not change the configured Torn member-sampling interval.
+- Lets each player choose up to 25 personal watched enemies inside Warbuddy.
+- Synchronizes that private list with the website action queue through the verified player session.
+- Removes faction-admin control over another player's watched targets.
 
-Askelads Warbuddy is a read-only Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
+Askelads Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
 ## Install
 
@@ -20,7 +21,7 @@ The install URL ends in `.user.js` and includes update metadata, so supported us
 
 - Current chain-risk and hospital-exit opportunities from the faction War Tracker.
 - Online enemy targets when they are relevant to the action queue.
-- Faction-configured watched enemies within one minute of landing or leaving hospital, and while attackable in Torn.
+- Personal watched enemies within one minute of landing or leaving hospital, and while attackable in Torn.
 - Active retaliation windows with explicit links to Torn.
 - A stable empty state when there are no immediate actions.
 
@@ -29,11 +30,12 @@ Warbuddy displays information and links only. It does not attack, click, submit,
 ## Access And Privacy
 
 - The Torn API key is stored locally by the userscript manager.
-- The key is used to identify the player and faction, then exchanged for a six-hour, faction-scoped, read-only companion session.
+- The key is used to identify the player and faction, then exchanged for a six-hour, faction-scoped companion session.
 - The key is not saved to the backend during that exchange.
 - Warbuddy connects only while a Torn faction tab is visible and the device is online.
-- Its backend session can read only War Tracker settings, rosters, score, and retaliation for the verified faction.
-- WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached read-only snapshot without making extra Torn API calls.
+- Its backend session can read War Tracker settings, rosters, score, and retaliation for the verified faction, and save only that player's watched-target list.
+- Other players' watched-target lists are never returned to the script.
+- WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached scoped snapshot without making extra Torn API calls.
 - Torn PDA normally uses this compatible snapshot path and may therefore show **Live (compatible)** instead of **Live**.
 
 If the earlier **Lads War Companion** script is installed, remove or disable it before installing Warbuddy so two copies do not run on the same Torn page.
@@ -57,6 +59,13 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.17 - 20 August 2026
+
+- Moves watched-target selection from faction admins to each individual Warbuddy user.
+- Identifies the owner from the verified Torn key and stores up to 25 targets separately per player.
+- Synchronizes personal targets with both Warbuddy and the website action queue without additional Torn API calls.
+- Keeps every other player's target list private.
+
 ### 0.1.16 - 20 August 2026
 
 - Reduces the visible Torn PDA-compatible fallback interval from ten seconds to five seconds.
@@ -64,7 +73,7 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ### 0.1.15 - 20 August 2026
 
-- Adds faction-scoped watched enemy targets selected by an admin in the War Tracker Control Panel.
+- Introduced faction-scoped watched enemy targets; selection moved to each player in 0.1.17.
 - Pins watched targets in the action queue within one minute of landing in Torn or leaving hospital, and while they are attackable in Torn.
 - Reuses the live roster stream without additional recurring Torn API requests.
 

@@ -285,7 +285,7 @@ describe("War Companion panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.16"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.17"'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
     assert.ok(source.includes('data-1p-ignore'));
@@ -338,6 +338,17 @@ describe("War Companion panel state", () => {
     assert.ok(reconnectAt > privacyAt);
     assert.ok(forgetAt > reconnectAt);
     assert.doesNotMatch(source, /data-action="refresh">Refresh/);
+  });
+
+  it("lets the verified player manage only their personal watched targets", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes('data-section="targets"'));
+    assert.ok(source.includes('data-action="save-targets"'));
+    assert.ok(source.includes('/war-companion/watched-targets'));
+    assert.ok(source.includes('JSON.stringify({ memberIds: normalizeTargetIds(state.targetDraft) })'));
+    assert.ok(source.includes('save only your watched-target list'));
+    assert.doesNotMatch(source, /faction-configured watched/i);
   });
 
   it("does not start the one-second ticker before a key is submitted", async () => {
