@@ -49,6 +49,11 @@ Backend access is provided by `https://backend.grusmedia.no`; this repository co
 
 ## Releases
 
+### 0.1.2 - 20 August 2026
+
+- Warbuddy now appears only on Torn faction war routes.
+- Bazaar and other unrelated pages no longer keep the panel, ticker, or live WebSocket active.
+
 ### 0.1.1 - 20 August 2026
 
 - Privacy now stays open while the live one-second countdown refreshes the panel.

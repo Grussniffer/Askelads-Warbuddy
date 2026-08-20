@@ -36,6 +36,23 @@
   const attackUrl = (memberId) =>
     `https://www.torn.com/page.php?sid=attack&user2ID=${encodeURIComponent(String(memberId || ""))}`;
 
+  const isFactionWarUrl = (value) => {
+    let url;
+    try {
+      url = new URL(String(value || ""), "https://www.torn.com/");
+    } catch {
+      return false;
+    }
+    if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return false;
+    if (url.pathname.toLowerCase() !== "/factions.php") return false;
+    let route = String(url.hash || "");
+    try { route = decodeURIComponent(route); } catch {}
+    route = route.toLowerCase().replace(/^#\/?/, "");
+    return /^war(?:[/?]|$)/.test(route)
+      || /(?:^|[/?&])tab=war(?:[/?&#]|$)/.test(route)
+      || /^ranked-?war(?:[/?]|$)/.test(route);
+  };
+
   const memberStatus = (member) =>
     String(member?.status?.userStatus || member?.status?.state || member?.status?.status || "").toLowerCase();
 
@@ -161,6 +178,7 @@
     duration,
     formatBsp,
     inferEnemyFactionId,
+    isFactionWarUrl,
     scoreForFaction,
     toTimestampMs,
   };

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Askelads Warbuddy
 // @namespace    https://github.com/Grussniffer/Askelads-Warbuddy
-// @version      0.1.1
+// @version      0.1.2
 // @description  Shows a read-only war action queue and live retaliation opportunities inside Torn.
 // @author       Askelads
 // @homepageURL  https://github.com/Grussniffer/Askelads-Warbuddy
@@ -58,6 +58,23 @@
 
   const attackUrl = (memberId) =>
     `https://www.torn.com/page.php?sid=attack&user2ID=${encodeURIComponent(String(memberId || ""))}`;
+
+  const isFactionWarUrl = (value) => {
+    let url;
+    try {
+      url = new URL(String(value || ""), "https://www.torn.com/");
+    } catch {
+      return false;
+    }
+    if (url.hostname.toLowerCase().replace(/^www\./, "") !== "torn.com") return false;
+    if (url.pathname.toLowerCase() !== "/factions.php") return false;
+    let route = String(url.hash || "");
+    try { route = decodeURIComponent(route); } catch {}
+    route = route.toLowerCase().replace(/^#\/?/, "");
+    return /^war(?:[/?]|$)/.test(route)
+      || /(?:^|[/?&])tab=war(?:[/?&#]|$)/.test(route)
+      || /^ranked-?war(?:[/?]|$)/.test(route);
+  };
 
   const memberStatus = (member) =>
     String(member?.status?.userStatus || member?.status?.state || member?.status?.status || "").toLowerCase();
@@ -184,6 +201,7 @@
     duration,
     formatBsp,
     inferEnemyFactionId,
+    isFactionWarUrl,
     scoreForFaction,
     toTimestampMs,
   };
@@ -196,7 +214,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.1";
+  const SCRIPT_VERSION = "0.1.2";
   const PANEL_ID = "lads-war-companion";
   const KEY_STORAGE = "lads_war_companion_api_key";
   const COLLAPSED_STORAGE = "lads_war_companion_collapsed";
@@ -228,6 +246,7 @@
     reconnectTimer: 0,
     reconnectAttempt: 0,
     ticker: 0,
+    routeTimer: 0,
     authPromise: null,
     rosters: new Map(),
     scores: new Map(),
@@ -236,6 +255,7 @@
     nowMs: Date.now(),
     collapsed: String(storage.get(COLLAPSED_STORAGE, "")) === "1",
     privacyOpen: false,
+    active: false,
     renderQueued: false,
   };
 
@@ -356,7 +376,7 @@
   });
 
   const getStoredKey = () => String(storage.get(KEY_STORAGE, "") || "").trim();
-  const isForeground = () => document.visibilityState === "visible" && document.hasFocus();
+  const isForeground = () => state.active && document.visibilityState === "visible" && document.hasFocus();
   const backendUrl = (path) => `${BACKEND_BASE_URL.replace(/\/$/, "")}${path}`;
   const socketUrl = () => `${BACKEND_BASE_URL.replace(/^http/i, "ws").replace(/\/$/, "")}/ws`;
 
@@ -555,6 +575,11 @@
   }
 
   function syncForegroundState() {
+    if (!state.active) {
+      stopTicker();
+      closeSocket();
+      return;
+    }
     if (isForeground()) {
       startTicker();
       ensureConnected();
@@ -611,6 +636,10 @@
   function render() {
     state.renderQueued = false;
     if (!document.body) return;
+    if (!state.active) {
+      document.getElementById(PANEL_ID)?.remove();
+      return;
+    }
     let panel = document.getElementById(PANEL_ID);
     if (!panel) {
       panel = document.createElement("section");
@@ -707,6 +736,21 @@
   }
 
   function start() {
+    syncPageActivation();
+    if (!state.routeTimer) state.routeTimer = setInterval(syncPageActivation, 1_000);
+  }
+
+  function syncPageActivation() {
+    const active = core.isFactionWarUrl(window.location.href);
+    if (state.active === active) return;
+    state.active = active;
+    if (!active) {
+      stopTicker();
+      closeSocket();
+      state.phase = getStoredKey() ? "paused" : "idle";
+      document.getElementById(PANEL_ID)?.remove();
+      return;
+    }
     render();
     syncForegroundState();
   }
@@ -714,7 +758,11 @@
   document.addEventListener("visibilitychange", syncForegroundState);
   window.addEventListener("focus", syncForegroundState);
   window.addEventListener("blur", syncForegroundState);
+  window.addEventListener("hashchange", syncPageActivation);
+  window.addEventListener("popstate", syncPageActivation);
   window.addEventListener("pagehide", () => {
+    if (state.routeTimer) clearInterval(state.routeTimer);
+    state.routeTimer = 0;
     stopTicker();
     closeSocket();
   });

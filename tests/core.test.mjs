@@ -109,5 +109,21 @@ describe("War Companion panel state", () => {
     assert.ok(source.includes('data-section="privacy"${state.privacyOpen ? " open" : ""}'));
     assert.ok(source.includes("if (nextBody) nextBody.scrollTop = bodyScrollTop"));
     assert.ok(source.includes("state.privacyOpen = event.currentTarget.open"));
+    assert.ok(source.includes("core.isFactionWarUrl(window.location.href)"));
+  });
+});
+
+describe("War Companion route activation", () => {
+  it("runs on Torn faction war routes", () => {
+    assert.equal(core.isFactionWarUrl("https://www.torn.com/factions.php?step=your#/war/rank"), true);
+    assert.equal(core.isFactionWarUrl("https://torn.com/factions.php?step=profile&ID=41309#/war"), true);
+    assert.equal(core.isFactionWarUrl("https://www.torn.com/factions.php?step=your#/tab=war"), true);
+  });
+
+  it("stays inactive on Bazaar and unrelated Torn routes", () => {
+    assert.equal(core.isFactionWarUrl("https://www.torn.com/bazaar.php"), false);
+    assert.equal(core.isFactionWarUrl("https://www.torn.com/factions.php?step=your#/tab=crimes"), false);
+    assert.equal(core.isFactionWarUrl("https://www.torn.com/factions.php#/%E0%A4%A"), false);
+    assert.equal(core.isFactionWarUrl("https://example.com/factions.php#/war/rank"), false);
   });
 });
