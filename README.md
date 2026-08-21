@@ -1,10 +1,10 @@
 # Warbuddy
 
-## 0.1.28
+## 0.1.29
 
-- Uses one active claim for both the Dibs hand and its matching attack link.
-- Keeps another member's `Dibsed` attack link solid gray and your own `Your Dibs` link green.
-- Makes Dibs details reliably dismissible through the close button, the hand, or a click elsewhere.
+- Records a quiet faction-scoped check-in so admins can see installed versions and recent use.
+- Checks in at most every ten minutes while the panel is expanded and visible.
+- Keeps tracking failures silent and independent from live war data.
 
 Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -38,6 +38,7 @@ Warbuddy displays information and links only. It never attacks, clicks, submits 
 - Other players' watched-target lists are never returned to the script.
 - WebSocket updates are preferred. If the browser rejects a third-party socket inside Torn, Warbuddy automatically uses a cached scoped snapshot without making extra Torn API calls.
 - Torn PDA normally uses this compatible snapshot path and may therefore show **Live (compatible)** instead of **Live**.
+- Warbuddy records player ID, player name, faction, script version, connection mode, first/last use, check-in count, and browser user agent for faction admins. The Torn API key is never included in a check-in.
 
 If an earlier standalone war companion is installed separately, remove or disable it before installing Warbuddy so two copies do not run on the same Torn page.
 
@@ -59,6 +60,13 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.29 - 21 August 2026
+
+- Adds persistent faction-scoped version and last-used check-ins for the admin System Overview.
+- Throttles foreground check-ins to once every ten minutes and pauses them with the rest of Warbuddy while hidden or collapsed.
+- Keeps check-in failures silent so missing database setup or a temporary backend problem cannot interrupt live war data.
+- Adds no Torn API calls and never includes the locally stored Torn API key in a check-in.
 
 ### 0.1.28 - 20 August 2026
 

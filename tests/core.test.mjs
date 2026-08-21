@@ -388,7 +388,7 @@ describe("Warbuddy panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.28"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.29"'));
     assert.ok(source.includes('if (!core.dibsFeatureEnabled(state.settings)) return ""'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
@@ -442,6 +442,19 @@ describe("Warbuddy panel state", () => {
     assert.ok(reconnectAt > privacyAt);
     assert.ok(forgetAt > reconnectAt);
     assert.doesNotMatch(source, /data-action="refresh">Refresh/);
+  });
+
+  it("records quiet, scoped version check-ins without adding Torn calls", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes("const SCRIPT_CHECK_IN_INTERVAL_MS = 10 * 60 * 1000"));
+    assert.ok(source.includes('data: JSON.stringify({ tornApiKey: key, scriptVersion: SCRIPT_VERSION })'));
+    assert.ok(source.includes('/war-companion/check-in'));
+    assert.ok(source.includes('Authorization: `Bearer ${state.token}`'));
+    assert.ok(source.includes('data: JSON.stringify({ scriptVersion: SCRIPT_VERSION, transport })'));
+    assert.ok(source.includes('if (state.phase === "connected") void recordScriptCheckIn("websocket")'));
+    assert.ok(source.includes('if (state.phase === "fallback") void recordScriptCheckIn("compatible")'));
+    assert.doesNotMatch(source, /api\.torn\.com[^\n]*check-in/i);
   });
 
   it("lets the verified player manage only their personal watched targets", async () => {

@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.28";
+  const SCRIPT_VERSION = "0.1.29";
   const PANEL_ID = "warbuddy-panel";
   const KEY_STORAGE = "warbuddy_api_key";
   const COLLAPSED_STORAGE = "warbuddy_collapsed";
@@ -19,6 +19,8 @@
   const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
   const FALLBACK_POLL_MS = 2_000;
   const FALLBACK_SOCKET_RETRY_MS = 60_000;
+  const SCRIPT_CHECK_IN_INTERVAL_MS = 10 * 60 * 1000;
+  const SCRIPT_CHECK_IN_RETRY_MS = 60_000;
   const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function";
   const PANEL_EDGE_GAP = 8;
   const MAX_WATCHED_TARGETS = 25;
@@ -69,6 +71,10 @@
     pageObserver: null,
     observedBody: null,
     authPromise: null,
+    checkInPromise: null,
+    lastCheckInAt: 0,
+    lastCheckInAttemptAt: 0,
+    lastCheckInTransport: "",
     rosters: new Map(),
     factionNames: new Map(),
     scores: new Map(),
@@ -413,7 +419,7 @@
         method: "POST",
         url: backendUrl(`/api/v1/factions/${encodeURIComponent(factionId)}/war-companion/session`),
         headers: { "Content-Type": "application/json" },
-        data: JSON.stringify({ tornApiKey: key }),
+        data: JSON.stringify({ tornApiKey: key, scriptVersion: SCRIPT_VERSION }),
         label: "Warbuddy login",
       });
       if (!response?.session?.wsSessionToken) throw new Error("Backend did not return a companion session");
@@ -422,6 +428,9 @@
         state.factionNames.set(String(response.session.factionId), String(response.session.factionName));
       }
       state.token = response.session.wsSessionToken;
+      state.lastCheckInAt = 0;
+      state.lastCheckInAttemptAt = 0;
+      state.lastCheckInTransport = "";
       state.reconnectAttempt = 0;
       state.error = "";
       return response.session;
@@ -434,6 +443,38 @@
       scheduleRender();
     });
     return state.authPromise;
+  }
+
+  function recordScriptCheckIn(transport) {
+    if (transport !== "websocket" && transport !== "compatible") return Promise.resolve();
+    if (!state.session?.factionId || !state.token || !isForeground()) return Promise.resolve();
+    if (state.checkInPromise) return state.checkInPromise;
+    const now = Date.now();
+    if (
+      state.lastCheckInTransport === transport
+      && now - state.lastCheckInAt < SCRIPT_CHECK_IN_INTERVAL_MS
+    ) return Promise.resolve();
+    if (now - state.lastCheckInAttemptAt < SCRIPT_CHECK_IN_RETRY_MS) return Promise.resolve();
+
+    state.lastCheckInAttemptAt = now;
+    state.checkInPromise = requestJson({
+      method: "POST",
+      url: backendUrl(`/api/v1/factions/${encodeURIComponent(state.session.factionId)}/war-companion/check-in`),
+      headers: {
+        Authorization: `Bearer ${state.token}`,
+        "Content-Type": "application/json",
+      },
+      data: JSON.stringify({ scriptVersion: SCRIPT_VERSION, transport }),
+      label: "Warbuddy check-in",
+      timeout: 10_000,
+    }).then((response) => {
+      if (response?.recorded === false) return;
+      state.lastCheckInAt = Date.now();
+      state.lastCheckInTransport = transport;
+    }).catch(() => undefined).finally(() => {
+      state.checkInPromise = null;
+    });
+    return state.checkInPromise;
   }
 
   function clearSocketConnectTimer() {
@@ -620,6 +661,7 @@
       state.lastFallbackAt = new Date().toISOString();
       state.lastFallbackError = "";
       state.fallbackFailureCount = 0;
+      void recordScriptCheckIn("compatible");
     } catch (error) {
       if (generation !== state.fallbackGeneration || !state.fallbackActive) return;
       state.lastFallbackError = String(error?.message || "Fallback update failed");
@@ -704,6 +746,7 @@
         state.error = "";
         state.lastSocketClose = null;
         subscribeTopics(socket);
+        void recordScriptCheckIn("websocket");
         scheduleRender();
       });
       socket.addEventListener("message", handleSocketMessage);
@@ -769,6 +812,8 @@
     if (state.ticker) return;
     state.ticker = setInterval(() => {
       state.nowMs = Date.now();
+      if (state.phase === "connected") void recordScriptCheckIn("websocket");
+      if (state.phase === "fallback") void recordScriptCheckIn("compatible");
       scheduleRender();
     }, 1_000);
   }
@@ -1067,7 +1112,7 @@
       ${savedKey ? "" : `<div class="wc-row"><input class="wc-input wc-secret-input" data-field="api-key" type="text" inputmode="text" autocomplete="one-time-code" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore="true" data-protonpass-ignore="true" data-form-type="other" aria-label="Torn API key" placeholder="Torn API key" value="${escapeHtml(state.keyDraft)}"><button class="wc-button primary" data-action="connect">Connect</button></div>`}
       ${savedKey ? `<div class="wc-section wc-action-section"><div class="wc-section-title"><span>Action queue</span><span class="wc-count">${view.actions.length}</span></div>${queueMarkup}</div>${retaliationSection}` : ""}
       ${watchedTargetsSection}
-      <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it to verify your profile and faction; the scoped session can read war data and save only your watched-target list.</div>${savedKey ? `<div class="wc-private-actions"><button class="wc-button" data-action="refresh">Reconnect</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}</details>
+      <details data-section="privacy"${state.privacyOpen ? " open" : ""}><summary>Privacy</summary><div class="wc-privacy">The key stays in your userscript storage. Torn and the backend use it to verify your profile and faction. Warbuddy records your version, connection mode, and last use for faction admins. Its scoped session can save only your watched-target list and Dibs actions.</div>${savedKey ? `<div class="wc-private-actions"><button class="wc-button" data-action="refresh">Reconnect</button><button class="wc-button" data-action="forget">Forget key</button></div>` : ""}</details>
     </div>`;
 
     const nextBody = panel.querySelector(".wc-body");
@@ -1163,6 +1208,9 @@
       closeSocket();
       state.session = null;
       state.token = "";
+      state.lastCheckInAt = 0;
+      state.lastCheckInAttemptAt = 0;
+      state.lastCheckInTransport = "";
       state.error = "";
       state.phase = "idle";
       state.rosters.clear();
@@ -1185,6 +1233,9 @@
     state.keyDraft = "";
     state.token = "";
     state.session = null;
+    state.lastCheckInAt = 0;
+    state.lastCheckInAttemptAt = 0;
+    state.lastCheckInTransport = "";
     state.settings = null;
     state.dibs = { claims: [] };
     state.dibsInspectTargetId = 0;
