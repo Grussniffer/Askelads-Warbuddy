@@ -1,10 +1,10 @@
 # Warbuddy
 
-## 0.1.29
+## 0.1.30
 
-- Records a quiet faction-scoped check-in so admins can see installed versions and recent use.
-- Checks in at most every ten minutes while the panel is expanded and visible.
-- Keeps tracking failures silent and independent from live war data.
+- Uses Torn PDA's native HTTP bridge before userscript compatibility shims.
+- Reduces background rendering and DOM observation while preserving two-second live snapshots.
+- Backs failed compatible-mode refreshes off to a maximum of ten seconds.
 
 Warbuddy is a Torn userscript for the live war action queue and retaliation opportunities supplied by the Grusmedia backend.
 
@@ -60,6 +60,15 @@ Source files:
 Backend access is provided by `https://backend.grusmedia.no`; this repository contains no backend secrets.
 
 ## Releases
+
+### 0.1.30 - 22 August 2026
+
+- Prefers Torn PDA's native request handlers so compatible mode does not depend on its userscript-manager shim.
+- Lets successful compatible snapshots drive panel updates instead of repainting the full panel every second.
+- Retries failed compatible snapshots after 4, 8, then at most 10 seconds; successful updates immediately return to the normal 2-second interval.
+- Pauses route work and cancels queued animation frames while Torn is hidden, then performs a clean route and connection sync when it becomes visible.
+- Narrows panel recovery observation to direct page-body changes, reducing work from Torn's frequently changing nested DOM.
+- Adds no Torn API calls and requires no backend or database change.
 
 ### 0.1.29 - 21 August 2026
 

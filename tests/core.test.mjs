@@ -101,6 +101,10 @@ const bootUserscript = async (href, { withBody = true, visibilityState = "hidden
       document.readyState = "complete";
       documentListeners.get("DOMContentLoaded")?.();
     },
+    setVisibility(value) {
+      document.visibilityState = value;
+      documentListeners.get("visibilitychange")?.();
+    },
   };
 };
 
@@ -388,7 +392,7 @@ describe("Warbuddy panel state", () => {
     const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
 
     assert.ok(source.includes('class="wc-input wc-secret-input"'));
-    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.29"'));
+    assert.ok(source.includes('const SCRIPT_VERSION = "0.1.30"'));
     assert.ok(source.includes('if (!core.dibsFeatureEnabled(state.settings)) return ""'));
     assert.ok(source.includes('type="text"'));
     assert.ok(source.includes('autocomplete="one-time-code"'));
@@ -406,8 +410,22 @@ describe("Warbuddy panel state", () => {
 
     assert.ok(pdaGet >= 0);
     assert.ok(pdaPost >= 0);
+    assert.ok(pdaGet < source.indexOf('typeof GM_xmlhttpRequest === "function"'));
     assert.ok(source.includes('const isTornPda = typeof window.PDA_httpGet === "function" || typeof window.PDA_httpPost === "function"'));
     assert.ok(source.includes('if (isTornPda) {\n        if (!fallbackIsFresh()) state.phase = "connecting";\n        startFallbackPolling();'));
+  });
+
+  it("keeps compatible-mode recovery bounded and pauses expensive PDA rendering", async () => {
+    const source = await readFile(new URL("../src/userscript.js", import.meta.url), "utf8");
+
+    assert.ok(source.includes("const FALLBACK_POLL_MS = 2_000"));
+    assert.ok(source.includes("const FALLBACK_POLL_MAX_MS = 10_000"));
+    assert.ok(source.includes("2 ** Math.min(state.fallbackFailureCount, 3)"));
+    assert.ok(source.includes("if (!isTornPda || !state.fallbackActive) scheduleRender()"));
+    assert.ok(source.includes('state.pageObserver.observe(document.body, { childList: true })'));
+    assert.ok(!source.includes('state.pageObserver.observe(document.body, { childList: true, subtree: true })'));
+    assert.ok(source.includes('document.addEventListener("visibilitychange", syncVisibilityState)'));
+    assert.ok(source.includes("cancelAnimationFrame(state.renderFrame)"));
   });
 
   it("does not replace an API key while the player is entering it", async () => {
@@ -611,6 +629,8 @@ describe("Warbuddy route activation", () => {
     assert.equal(faction.elements.has("warbuddy-panel"), false);
 
     faction.activateBody();
+    assert.equal(faction.elements.has("warbuddy-panel"), false);
+    faction.setVisibility("visible");
     assert.equal(faction.elements.has("warbuddy-panel"), true);
     assert.equal(faction.elements.get("warbuddy-panel").tagName, "DIV");
     assert.equal(faction.menuCommands.has("Warbuddy: diagnostics"), true);
@@ -622,7 +642,9 @@ describe("Warbuddy route activation", () => {
     const bazaar = await bootUserscript("https://www.torn.com/bazaar.php");
     assert.equal(bazaar.elements.has("warbuddy-panel"), false);
 
-    const attack = await bootUserscript("https://www.torn.com/page.php?sid=attack&user2ID=123");
+    const attack = await bootUserscript("https://www.torn.com/page.php?sid=attack&user2ID=123", {
+      visibilityState: "visible",
+    });
     assert.equal(attack.elements.has("warbuddy-panel"), true);
 
     const stocks = await bootUserscript("https://www.torn.com/page.php?sid=stocks");

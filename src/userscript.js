@@ -5,7 +5,7 @@
   if (!core) return;
 
   const BACKEND_BASE_URL = "https://backend.grusmedia.no";
-  const SCRIPT_VERSION = "0.1.29";
+  const SCRIPT_VERSION = "0.1.30";
   const PANEL_ID = "warbuddy-panel";
   const KEY_STORAGE = "warbuddy_api_key";
   const COLLAPSED_STORAGE = "warbuddy_collapsed";
@@ -18,6 +18,7 @@
   const REQUEST_TIMEOUT_MS = 30_000;
   const SOCKET_CONNECT_TIMEOUT_MS = 15_000;
   const FALLBACK_POLL_MS = 2_000;
+  const FALLBACK_POLL_MAX_MS = 10_000;
   const FALLBACK_SOCKET_RETRY_MS = 60_000;
   const SCRIPT_CHECK_IN_INTERVAL_MS = 10 * 60 * 1000;
   const SCRIPT_CHECK_IN_RETRY_MS = 60_000;
@@ -96,6 +97,7 @@
     targetListScrollTop: 0,
     active: false,
     renderQueued: false,
+    renderFrame: 0,
     dragging: false,
     lastSocketErrorAt: "",
     lastSocketClose: null,
@@ -203,18 +205,18 @@
   };
 
   const sendRequest = (options) => {
-    if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest({ ...options, anonymous: true });
     const method = String(options.method || "GET").toUpperCase();
-    if (method === "GET" && typeof window.PDA_httpGet === "function") {
+    if (isTornPda && method === "GET" && typeof window.PDA_httpGet === "function") {
       window.PDA_httpGet(options.url, options.headers || {})
         .then((value) => options.onload?.(normalizeResponse(value))).catch(options.onerror);
       return;
     }
-    if (method === "POST" && typeof window.PDA_httpPost === "function") {
+    if (isTornPda && method === "POST" && typeof window.PDA_httpPost === "function") {
       window.PDA_httpPost(options.url, options.headers || {}, options.data || "")
         .then((value) => options.onload?.(normalizeResponse(value))).catch(options.onerror);
       return;
     }
+    if (typeof GM_xmlhttpRequest === "function") return GM_xmlhttpRequest({ ...options, anonymous: true });
     fetch(options.url, {
       method,
       headers: options.headers || {},
@@ -623,10 +625,14 @@
   function scheduleFallbackPoll() {
     clearFallbackTimer();
     if (!state.fallbackActive || !isForeground()) return;
+    const delay = Math.min(
+      FALLBACK_POLL_MAX_MS,
+      FALLBACK_POLL_MS * (2 ** Math.min(state.fallbackFailureCount, 3)),
+    );
     state.fallbackTimer = setTimeout(() => {
       state.fallbackTimer = 0;
       pollFallbackSnapshot();
-    }, FALLBACK_POLL_MS);
+    }, delay);
   }
 
   function startFallbackPolling() {
@@ -655,6 +661,7 @@
         label: "Warbuddy snapshot",
       });
       if (generation !== state.fallbackGeneration || !state.fallbackActive || !isForeground()) return;
+      state.nowMs = Date.now();
       applyFallbackSnapshot(snapshot);
       state.phase = "fallback";
       state.error = "";
@@ -814,7 +821,7 @@
       state.nowMs = Date.now();
       if (state.phase === "connected") void recordScriptCheckIn("websocket");
       if (state.phase === "fallback") void recordScriptCheckIn("compatible");
-      scheduleRender();
+      if (!isTornPda || !state.fallbackActive) scheduleRender();
     }, 1_000);
   }
 
@@ -838,6 +845,7 @@
     stopTicker();
     closeSocket();
     state.phase = getStoredKey() ? "paused" : "idle";
+    cancelScheduledRender();
     scheduleRender();
   }
 
@@ -1245,10 +1253,20 @@
     scheduleRender();
   }
 
+  function cancelScheduledRender() {
+    if (state.renderFrame) cancelAnimationFrame(state.renderFrame);
+    state.renderFrame = 0;
+    state.renderQueued = false;
+  }
+
   function scheduleRender() {
+    if (document.visibilityState === "hidden") return;
     if (state.renderQueued) return;
     state.renderQueued = true;
-    requestAnimationFrame(render);
+    state.renderFrame = requestAnimationFrame(() => {
+      state.renderFrame = 0;
+      render();
+    });
   }
 
   function start() {
@@ -1266,10 +1284,11 @@
     state.pageObserver = new MutationObserver(() => {
       if (state.active && !document.getElementById(PANEL_ID)) render();
     });
-    state.pageObserver.observe(document.body, { childList: true, subtree: true });
+    state.pageObserver.observe(document.body, { childList: true });
   }
 
   function syncPageActivation() {
+    if (document.visibilityState === "hidden") return;
     startPageObserver();
     const active = core.isWarbuddyPageUrl(window.location.href);
     if (!active) {
@@ -1286,6 +1305,17 @@
     state.active = true;
     if (becameActive || !document.getElementById(PANEL_ID)) render();
     if (becameActive) syncForegroundState();
+  }
+
+  function syncVisibilityState() {
+    if (document.visibilityState === "hidden") {
+      cancelScheduledRender();
+      syncForegroundState();
+      return;
+    }
+    syncPageActivation();
+    syncForegroundState();
+    scheduleRender();
   }
 
   registerMenuCommand("Warbuddy: show panel", () => {
@@ -1327,7 +1357,7 @@
     applyStoredPanelPosition();
   });
 
-  document.addEventListener("visibilitychange", syncForegroundState);
+  document.addEventListener("visibilitychange", syncVisibilityState);
   document.addEventListener("pointerdown", (event) => {
     if (!state.dibsInspectTargetId) return;
     const target = event.target;
@@ -1335,7 +1365,7 @@
     state.dibsInspectTargetId = 0;
     scheduleRender();
   }, true);
-  window.addEventListener("focus", syncForegroundState);
+  window.addEventListener("focus", syncVisibilityState);
   window.addEventListener("online", syncForegroundState);
   window.addEventListener("offline", syncForegroundState);
   window.addEventListener("resize", applyStoredPanelPosition);
@@ -1347,6 +1377,7 @@
     state.routeTimer = 0;
     stopTicker();
     closeSocket();
+    cancelScheduledRender();
     state.active = false;
     state.pageObserver?.disconnect();
     state.pageObserver = null;
